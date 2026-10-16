@@ -1,279 +1,2647 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>CalmSignal – stress baseline prototype</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#F2F5F4;--card:#fff;--ink:#1D2B2E;--mut:#66777A;--line:#E1E8E6;--acc:#2F6F73;--g:#3E9A74;--a:#D6A03A;--o:#D9622F;--r:#C0392B;--rec:#4A8FA8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121B1D;--card:#1B282B;--ink:#E8F0EF;--mut:#93A6A8;--line:#2A3A3D;--acc:#5FB2B6}}
-:root[data-theme="dark"]{--bg:#121B1D;--card:#1B282B;--ink:#E8F0EF;--mut:#93A6A8;--line:#2A3A3D;--acc:#5FB2B6}
-html,body{height:100%;margin:0}*{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font:15px/1.45 Manrope,system-ui,sans-serif}
-#app{max-width:480px;height:100%;margin:0 auto;display:flex;flex-direction:column;position:relative;background:var(--bg)}
-#main{flex:1;overflow-y:auto;padding:14px 16px 24px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:12px}
-h1,h2,h3{margin:0 0 6px;font-weight:600}h1{font:500 28px/1.15 Fraunces,Georgia,serif}h2{font-size:17px}h3{font-size:14px}
-.sub{color:var(--mut);font-size:13px}.big{font:500 54px/1 Fraunces,Georgia,serif}
-.btn{display:inline-block;border:0;border-radius:14px;padding:12px 16px;background:var(--acc);color:#fff;font:600 15px Manrope,sans-serif;text-decoration:none;cursor:pointer;text-align:center}
-.btn.sec{background:transparent;color:var(--acc);border:1px solid var(--line)}.btn.red{background:var(--r)}.btn.sm{padding:8px 12px;font-size:13px;border-radius:11px}.btn.full{display:block;width:100%}
-.row{display:flex;gap:8px;align-items:center}.sp{justify-content:space-between}.wrap{flex-wrap:wrap}.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.chip{display:inline-block;padding:6px 11px;border-radius:99px;border:1px solid var(--line);font-size:13px;background:transparent;color:var(--ink);cursor:pointer;font-family:inherit}
-.chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}.tag{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--line);color:var(--mut)}
-.m{font:600 24px Manrope}.u{font-size:12px;color:var(--mut)}
-input,select,textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);font:inherit}
-label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}.err{color:var(--r);font-size:12px;min-height:16px}
-nav{display:flex;border-top:1px solid var(--line);background:var(--card)}nav button{flex:1;padding:12px 0;border:0;background:none;color:var(--mut);font:600 13px Manrope;cursor:pointer}nav button.on{color:var(--acc);box-shadow:inset 0 2px var(--acc)}
-#ov{position:absolute;inset:0;background:var(--bg);overflow-y:auto;padding:14px 16px 28px;z-index:5}#ov:empty{display:none}
-.hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.demo{position:absolute;top:8px;right:8px;z-index:3}
-canvas{width:100%;height:90px;display:block;background:var(--bg);border-radius:12px}
-.circle{width:190px;height:190px;border-radius:50%;margin:30px auto;background:radial-gradient(circle,var(--acc),#2F6F7399);transform:scale(.55)}
-.tl{border-left:2px solid var(--line);padding-left:12px;margin-left:4px}.tl div{margin-bottom:8px}
-.bar{height:8px;border-radius:9px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
-.msg{padding:9px 12px;border-radius:14px;margin:6px 0;max-width:86%}.msg.bot{background:var(--card);border:1px solid var(--line)}.msg.me{background:var(--acc);color:#fff;margin-left:auto}
-.cell{aspect-ratio:1}.tab2{display:flex;gap:6px;margin-bottom:10px}
-@media(prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body><div id="app"><div id="main"></div><div id="ov"></div></div>
-<script>
-/* ===== CONFIG (swap helplines per country before production) ===== */
-const HELP=[{n:'Emergency Services',num:'112',d:'Police, fire, ambulance'},{n:'Tele-MANAS (mental health support)',num:'14416',d:'Free mental health support, India'}];
-const TRIG=['Studies/Exams','Friends/Relationships','Family','Work/Responsibilities','Sleep/Fatigue','Overthinking','Social Media','Travel/Environment','Physical Discomfort','Something Else'];
-const CTXS=['Studying','Resting','Walking','Exercising','Working','Travelling','Sleeping','Socializing','Other'];
-const STN={LOW:'LOW STRESS',ELEVATED:'ELEVATED',HIGH:'HIGH STRESS RESPONSE',RECOVERING:'RECOVERING'};
-const STC={LOW:'var(--g)',ELEVATED:'var(--a)',HIGH:'var(--o)',RECOVERING:'var(--rec)'};
-/* ===== STORE (single shared source: profile, base, events, sessions, journal, contacts) ===== */
-const KEY='calmsignal_v1';
-const DEF=()=>({profile:null,onb:false,base:{days:0,n:{hr:0,hrv:0,st:0,sp:0},m:{hr:0,hrv:0,st:0,sp:0},v:{hr:0,hrv:0,st:0,sp:0}},events:[],sessions:[],journal:[],contacts:[],set:{auto:false,haptic:true,sp:true,jp:true,ai:false,jmem:false,voice:false},ctx:'Resting'});
-let S;try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}S=S||DEF();
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
-const uid=()=>Math.random().toString(36).slice(2,9);
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const $=s=>document.querySelector(s);const fmt=t=>new Date(t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
-const fday=t=>new Date(t).toLocaleDateString([],{day:'numeric',month:'short'});
-/* ===== BASELINE (running mean/SD per signal; only usable, low-movement samples) ===== */
-const FLOOR={hr:3,hrv:6,st:.3,sp:.5},REF={hr:72,hrv:56,st:33.2,sp:98};
-const upd=(k,x)=>{const b=S.base,n=++b.n[k],d=x-b.m[k];b.m[k]+=d/n;b.v[k]+=d*(x-b.m[k])};
-const sd=k=>S.base.n[k]>1?Math.sqrt(S.base.v[k]/(S.base.n[k]-1)):0;
-const active=()=>S.base.days>=7&&S.base.n.hr>=300&&S.base.n.hrv>=300;
-const bm=k=>active()?S.base.m[k]:REF[k];
-const rng=k=>{const m=S.base.m[k],s=Math.max(sd(k),FLOOR[k])*1.2;return[m-s,m+s]};
-const rtxt=(k,d=0)=>S.base.n[k]>30?rng(k).map(x=>x.toFixed(d)).join('–'):'learning';
-/* ===== SENSOR PROVIDER (mock; replace read()/status() with ESP32 BLE adapter) ===== */
-const SC={normal:{hr:72,hrv:56,sp:98,st:33.2,act:'Resting',mv:'Low'},elevated:{hr:88,hrv:38,sp:97,st:32.9,act:'Sitting',mv:'Low'},high:{hr:106,hrv:22,sp:97,st:32.2,act:'Sitting',mv:'Low'},recovery:{hr:79,hrv:46,sp:98,st:33,act:'Resting',mv:'Low'},walking:{hr:96,hrv:44,sp:98,st:33.4,act:'Walking',mv:'Moderate'},exercising:{hr:134,hrv:18,sp:97,st:34.1,act:'Running',mv:'High'},learning:{hr:72,hrv:56,sp:98,st:33.2,act:'Resting',mv:'Low'}};
-const SCN={normal:'Normal',elevated:'Elevated stress',high:'High stress response',recovery:'Recovery',walking:'Walking',exercising:'Exercising',learning:'Baseline learning'};
-const P={sc:'normal',c:{...SC.normal,amb:27.5,hum:62},dropSp:false,
-tick(){const t=SC[this.sc],c=this.c,nz={hr:2,hrv:2.5,sp:.3,st:.05};for(const k in nz)c[k]+=(t[k]-c[k])*.15+(Math.random()-.5)*nz[k];c.act=t.act;c.mv=t.mv;c.amb=27.5+Math.sin(Date.now()/6e4)*.4;c.hum=62+Math.cos(Date.now()/9e4)*2;return this.read()},
-read(){const c=this.c;return{hr:Math.round(c.hr),hrv:Math.round(c.hrv),sp:this.dropSp?null:Math.round(Math.min(100,c.sp)),st:+c.st.toFixed(1),act:c.act,mv:c.mv,amb:+c.amb.toFixed(1),hum:Math.round(c.hum)}},
-status(){const s='Simulated';return[['ESP32 board',s],['ECG (AD8232)',s],['Pulse / SpO₂',this.dropSp?'Signal lost':s],['Skin temperature',s],['DHT22',s],['IMU',s],['Thermal camera','Simulated · no camera']]}};
-/* ===== STRESS ENGINE (rule-based multimodal prototype; swap step() for a trained model) ===== */
-const cl=x=>Math.max(0,Math.min(1,x));
-const E={sc:0,state:'LOW',stage:'NORMAL',r:P.read(),ring:[],hist:[],ev:null,calm:0,dis:0,
-step(r){this.r=r;const prev=this.state;const ex=['Exercising','Walking'].includes(S.ctx)||r.mv!=='Low';
-let raw=100*(.45*cl((r.hr-bm('hr'))/35)+.4*cl((bm('hrv')-r.hrv)/35)+.15*cl((bm('st')-r.st)/1.5));if(ex)raw*=.2;
-this.sc=this.sc*.75+raw*.25;const s=this.sc;
-let L=s>=62||(prev==='HIGH'&&s>=50)?'HIGH':s>=35||(prev==='ELEVATED'&&s>=28)?'ELEVATED':'LOW';
-if(L==='LOW'&&['HIGH','ELEVATED','RECOVERING'].includes(prev)&&s>=22)L='RECOVERING';
-this.hist.push(s);if(this.hist.length>600)this.hist.shift();const d=s-(this.hist[this.hist.length-16]??s);
-this.stage=L==='HIGH'?'HIGH':L==='RECOVERING'?'RECOVERING':L==='ELEVATED'?(d>=4?'RISING':'EARLY SIGNS'):(active()&&s>=20&&d>=6?'EARLY SIGNS':'NORMAL');
-const row={t:Date.now(),hr:r.hr,hrv:r.hrv,sc:Math.round(s),st:r.st,sp:r.sp,act:r.act,amb:r.amb,hum:r.hum};
-this.ring.push(row);if(this.ring.length>300)this.ring.shift();this.state=L;
-if(L!==prev){const lab={ELEVATED:'Readings moving away from your usual pattern',HIGH:'High-confidence stress response',RECOVERING:'Recovering',LOW:'Closer to baseline'}[L];
- if(!this.ev&&(L==='ELEVATED'||L==='HIGH')){this.ev={id:uid(),start:row.t,end:null,peak:L,peakSc:row.sc,ctx:S.ctx,personal:active(),b:{hr:bm('hr'),hrv:bm('hrv'),st:bm('st')},rec:this.ring.slice(-30),marks:[]};S.events.push(this.ev)}
- if(this.ev)this.ev.marks.push({t:row.t,label:lab});
- if(L==='HIGH'&&S.set.auto&&!SUP.run)SUP.open('breath')}
-const ev=this.ev;if(ev){if(ev.rec[ev.rec.length-1]!==row)ev.rec.push(row);if(row.sc>=ev.peakSc){ev.peakSc=row.sc;ev.peakRow=row}
- if(L==='HIGH')ev.peak='HIGH';if(L==='LOW'){if(++this.calm>=20){ev.end=row.t;ev.after=row;this.ev=null;this.calm=0;save()}}else this.calm=0}}};
-const openEv=()=>E.ev;const lastEv=()=>S.events[S.events.length-1];
-/* ===== SUPPORT (breathing + grounding + check-in) ===== */
-const PH=[['INHALE',4],['HOLD',4],['EXHALE',6],['REST',2]],TOT=96;
-const HAP={INHALE:[150,350,150,350,150,350,150,350],HOLD:[400],EXHALE:[900,200,900,200,900,200],REST:[]};
-const SUP={run:false,mode:'choose',el:0,paused:false,tm:null,ph:'',sess:null,gi:0,
-open(m){this.run=true;this.mode=m;OV.length=0;OV.push({k:'support'});ov();if(m==='breath')this.start()},
-start(){this.stop();this.mode='breath';this.el=0;this.paused=false;this.ph='';
- this.sess={id:uid(),type:'Guided breathing',start:Date.now(),hr0:E.r.hr,evId:E.ev?E.ev.id:(lastEv()&&!lastEv().end?lastEv().id:null)};
- if(E.ev)E.ev.marks.push({t:Date.now(),label:'Silent Support started'});ov();
- this.tm=setInterval(()=>{if(this.paused)return;this.el+=.1;this.tick()},100)},
-stop(){clearInterval(this.tm);this.tm=null},
-tick(){if(this.el>=TOT){return this.finish()}let t=this.el%16,i=0;while(t>=PH[i][1]){t-=PH[i][1];i++}const[n,d]=PH[i];
- if(n!==this.ph){this.ph=n;const c=$('#circ'),pl=$('#pl'),vb=$('#vb');if(c){c.style.transition=`transform ${n==='INHALE'||n==='EXHALE'?d:0}s linear`;c.style.transform=n==='INHALE'?'scale(1)':n==='EXHALE'?'scale(.55)':c.style.transform||'scale(.55)'}
-  if(pl)pl.textContent=n;const can=S.set.haptic&&navigator.vibrate;if(can)navigator.vibrate(HAP[n]);if(vb)vb.textContent=!S.set.haptic?'Haptics off':can?'Vibration active':'Simulated vibration (this device cannot vibrate)'}
- const tm=$('#tl');if(tm)tm.textContent=Math.max(0,Math.ceil(TOT-this.el))+'s left'},
-pause(){this.paused=!this.paused;const b=$('#pb');if(b)b.textContent=this.paused?'Resume':'Pause';if(this.paused&&navigator.vibrate)navigator.vibrate(0)},
-finish(){this.stop();if(navigator.vibrate)navigator.vibrate(0);if(this.sess){this.sess.dur=Math.round(this.el);this.sess.hr1=E.r.hr}this.mode='check';ov()},
-rate(f){const s=this.sess;if(s&&!S.sessions.includes(s)){s.fb=f;s.hr1=E.r.hr;S.sessions.push(s);const ev=S.events.find(e=>e.id===s.evId);if(ev)ev.marks.push({t:Date.now(),label:'Check-in: '+f});save()}this.fb=f;this.mode='after';ov()},
-close(){this.stop();if(navigator.vibrate)navigator.vibrate(0);this.run=false;OV.length=0;ov();render()}};
-/* ===== CHATBOT (simulated rules – no external AI service connected) ===== */
-const CH=[];
-function chatCtx(){const r=E.r;let t=`Right now: ${STN[E.state].toLowerCase()}, heart rate ${r.hr} BPM, HRV ${r.hrv} ms${r.sp==null?'':', SpO₂ '+r.sp+'%'}.`;
- if(S.set.ai&&S.set.jmem){const j=S.journal.filter(x=>x.incl);if(j.length){const c={};j.forEach(x=>c[x.trig]=(c[x.trig]||0)+1);const top=Object.entries(c).sort((a,b)=>b[1]-a[1])[0][0];t+=` You've previously mentioned ${top}. Is today related to that, or something different?`}}return t}
-function reply(q){const s=q.toLowerCase();
- if(/(hurt myself|suicid|kill myself|end my life|in danger|can't go on|cant go on)/.test(s))return{t:"I'm really sorry you're feeling this way. I can't assess emergencies, but you deserve immediate support. Please contact someone now – nothing is called unless you tap.",em:1};
- if(/calm|breath/.test(s))return{t:"Let's slow things down. I can start a silent breathing session, or a grounding exercise if you prefer.",act:1};
- if(/read|mean|explain/.test(s)){const b=active()?`Your usual heart rate range is about ${rtxt('hr')} BPM.`:'Your baseline is still developing, so I can only describe, not compare.';return{t:`${chatCtx()} ${b} Readings can shift with movement, environment, caffeine or sleep, so this isn't proof of why you feel this way.`}}
- if(/journal|write/.test(s))return{t:'I can open the Trigger Journal. You don\'t have to explain anything you don\'t want to.',j:1};
- return{t:`Thanks for sharing. I'm a simulated assistant, not a therapist, and I can't diagnose anything. ${chatCtx()} Would a breathing exercise, grounding, or journaling help right now?`}}
-/* ===== VIEWS ===== */
-let TAB='home',RANGE='today',OV=[];
-const meter=(c)=>c<=2?'':'';
-const val=(k)=>{const r=E.r;return k==='sp'?(r.sp==null?'—':r.sp):r[k]};
-const insight=()=>{const r=E.r,s=E.state;if(r.sp==null)return'The SpO₂ signal is unreliable right now, so it is left out of the analysis rather than treated as normal.';
- if(['Exercising','Walking'].includes(S.ctx)||r.mv!=='Low')return'Your heart rate is higher alongside movement. This is not treated as a stress response.';
- if(!active())return'Your baseline is still developing, so live readings are shown without personal comparisons.';
- if(s==='ELEVATED'||s==='HIGH')return`Your heart rate (${r.hr} BPM) is above your usual ${rtxt('hr')} range and HRV (${r.hrv} ms) is lower while movement remains low. Signals change for many reasons, so this doesn't tell us the cause.`;
- if(s==='RECOVERING')return'Your readings are moving back toward your usual range.';
- return`Your readings are within your usual pattern for now (heart rate usual range ${rtxt('hr')} BPM).`};
-const metric=(k,l,u)=>`<div class="card" style="margin:0"><div class="u">${l}</div><div class="m"><span data-v="${k}">${val(k)}</span> <span class="u">${u}</span></div></div>`;
-function home(){const hr=new Date().getHours(),g=hr<12?'Good morning':hr<18?'Good afternoon':'Good evening',st=E.state,r=E.r,e=lastEv(),ses=S.sessions.length;
- const cmp=active()?`Heart rate usual range: ${rtxt('hr')} BPM · HRV: ${rtxt('hrv')} ms`:'Your baseline is still developing.';
- return`<h1>${g}, ${esc(S.profile.name.split(' ')[0])}</h1><div class="sub">Your current state</div>
-<div class="card" style="margin-top:10px;border-left:6px solid ${STC[st]}"><div class="row sp"><h2 style="color:${STC[st]}" data-v="state">${STN[st]}</h2><span class="tag">${E.stage}</span></div>
-<div class="big"><span data-v="score">${Math.round(E.sc)}</span><span class="u">/100</span></div><div class="sub">Estimated stress score – not a medical measurement or diagnosis.</div><div class="sub" style="margin-top:6px">${cmp}</div>
-<div class="row wrap" style="margin-top:10px"><button class="btn sm" data-a="supp">Support</button><button class="btn sm sec" data-a="chat">Talk to me</button></div></div>
-${E.stage==='EARLY SIGNS'||E.stage==='RISING'?(Date.now()>E.dis?`<div class="card"><h3>Early signs <span class="tag">experimental</span></h3><div class="sub">Your readings are beginning to move away from your usual pattern. This is a personalized experiment, not a prediction.</div><div class="row" style="margin-top:8px"><button class="btn sm" data-a="reset">Start a 60-second reset?</button><button class="btn sm sec" data-a="dis">Dismiss</button></div></div>`:''):''}
-${st==='HIGH'&&!SUP.run&&!(E.ev&&E.ev.offered)?`<div class="card" style="border-color:var(--o)"><h3>High-confidence stress response</h3><div class="sub">Start Silent Support? Follow the vibration – no sound.</div><div class="row" style="margin-top:8px"><button class="btn sm" data-a="start">START</button><button class="btn sm sec" data-a="notnow">NOT NOW</button></div></div>`:''}
-<div class="g2" style="margin-bottom:12px">${metric('hr','Heart rate','BPM')}${metric('hrv','HRV','ms')}${metric('sp','SpO₂','%')}${metric('st','Skin temp','°C')}<div class="card" style="margin:0;grid-column:span 2"><div class="u">Activity</div><div class="m" style="font-size:18px">${r.act} · ${r.mv} intensity</div></div></div>
-<div class="card"><h3>AI insight <span class="tag">rule-based</span></h3><div data-v="insight">${insight()}</div></div>
-<div class="card"><h3>Context (optional)</h3><div class="row wrap">${CTXS.map(c=>`<button class="chip ${S.ctx===c?'on':''}" data-a="ctx" data-c="${c}">${c}</button>`).join('')}</div></div>
-<div class="card"><h3>Most recent event</h3>${e?`<button class="chip" style="width:100%;text-align:left;border-radius:12px" data-a="ev" data-id="${e.id}">${fmt(e.start)} · peak ${STN[e.peak]} ${e.end?'':'(ongoing)'}</button>`:'<div class="sub">No stress events recorded yet.</div>'}</div>
-<div class="sub">Prototype, not a medical device. It does not diagnose any condition. Signals vary with movement, environment and ordinary variation.</div>`}
-function ecgHTML(){return`<canvas id="ecg"></canvas>`}
-function monitor(){const r=E.r,pr=active()||S.base.n.hr>30;const st=P.status();
- const hot=[...Array(48)].map((_,i)=>{const x=i%8,y=Math.floor(i/8),d=Math.hypot(x-3.5,y-2.5),t=(r.st-30)/6+.3-d*.07;return`<div class="cell" style="background:hsl(${Math.round(260-cl(t)*250)} 70% 50%)"></div>`}).join('');
- return`<h1>Live monitor</h1><div class="sub">All readings are simulated in this prototype.</div>
-<div class="card" style="margin-top:10px"><h2>Heart</h2><div class="g2"><div><div class="m"><span data-v="hr">${r.hr}</span> <span class="u">BPM</span></div><div class="u">usual ${rtxt('hr')}</div></div><div><div class="m"><span data-v="hrv">${r.hrv}</span> <span class="u">ms HRV</span></div><div class="u">usual ${rtxt('hrv')}</div></div></div>${ecgHTML()}<div class="u">ECG waveform: simulated, not from a sensor</div></div>
-<div class="card"><h2>Oxygen</h2><div class="g2"><div><div class="m" data-v="sp2">${r.sp==null?'Unreliable':r.sp+'%'}</div><div class="u">SpO₂</div></div><div><div class="m">${r.hr} <span class="u">BPM</span></div><div class="u">Pulse</div></div></div>${r.sp==null?'<div class="err">No reliable signal – not treated as a normal reading.</div>':''}</div>
-<div class="card"><h2>Temperature</h2><div class="g2"><div><div class="m" data-v="st">${r.st}°C</div><div class="u">Skin</div></div><div><div class="m">${r.amb}°C · ${r.hum}%</div><div class="u">Ambient · humidity (DHT22)</div></div></div></div>
-<div class="card"><h2>Movement</h2><div class="m" style="font-size:20px">${r.act} · ${r.mv} intensity</div><details><summary class="sub">Technical details</summary><div class="sub">Raw accelerometer values: simulated, ${(r.mv==='Low'?0.02:r.mv==='Moderate'?0.4:1.1).toFixed(2)} g RMS</div></details></div>
-<div class="card"><h2>Thermal</h2><div style="display:grid;grid-template-columns:repeat(8,1fr);gap:1px;border-radius:10px;overflow:hidden">${hot}</div><div class="u"><b>SIMULATED</b> thermal visualization. No thermal camera is connected; this is not real data.</div></div>
-<div class="card"><h2>Device status</h2>${st.map(([a,b])=>`<div class="row sp" style="padding:4px 0"><span>${a}</span><span class="tag" style="color:${b==='Signal lost'?'var(--r)':'var(--a)'}">${b}</span></div>`).join('')}</div>`}
-function rangeEv(){const d={today:864e5,week:6048e5,month:2592e6}[RANGE],t=Date.now()-d;return S.events.filter(e=>e.start>t)}
-const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
-function insights(){const evs=rangeEv(),all=S.events.filter(e=>e.rec.length>35),n=all.length,ND='<div class="sub">Not enough data yet.</div>';
- const dlt=e=>{const pre=e.rec.slice(0,10),pk=e.peakRow||e.rec[e.rec.length-1];return{hr:pk.hr-avg(pre.map(x=>x.hr)),hrv:pk.hrv-avg(pre.map(x=>x.hrv)),low:e.rec.filter(x=>x.act==='Resting'||x.act==='Sitting').length/e.rec.length}};
- const D=all.map(dlt);
- const sig=n>=3?`Your recorded episodes have commonly shown heart rate ${avg(D.map(x=>x.hr))>=0?'rising':'falling'} (average ${avg(D.map(x=>x.hr)).toFixed(0)} BPM), HRV ${avg(D.map(x=>x.hrv))<=0?'falling':'rising'} (${avg(D.map(x=>x.hrv)).toFixed(0)} ms) and movement ${avg(D.map(x=>x.low))>.7?'staying low':'varying'} (${n} episodes).`:ND;
- const trg={};S.journal.forEach(j=>{(trg[j.trig]=trg[j.trig]||[]).push(j)});
- const trH=Object.entries(trg).map(([k,v])=>{const hs=v.filter(x=>x.hr!=null);return`<div>${esc(k)} — ${v.length} recorded ${v.length>1?'entries':'entry'}${hs.length?' — average HR at entry '+avg(hs.map(x=>x.hr)).toFixed(0)+' BPM':''}</div>`}).join('')||ND;
- const top=Object.entries(trg).filter(([,v])=>v.length>=3)[0];
- const bs=S.sessions.filter(s=>s.fb);const grp={};bs.forEach(s=>(grp[s.type]=grp[s.type]||[]).push(s));
- const help=Object.entries(grp).map(([k,v])=>v.length<3?`<div>${k}: ${v.length} session${v.length>1?'s':''} – not enough data to compare yet.</div>`:`<div>${k}: ${v.filter(x=>['Better','A little better'].includes(x.fb)).length} of ${v.length} sessions were followed by feeling better; average HR change ${avg(v.map(x=>x.hr1-x.hr0)).toFixed(0)} BPM. Observed only, not proof the exercise caused it.</div>`).join('')||ND;
- const done=S.events.filter(e=>e.end);const rc=done.length?(()=>{const e=done[done.length-1],pk=e.peakRow||e.rec[0];return`Heart rate moved from ${pk.hr} BPM (peak) to ${e.after.hr} BPM; ${active()?'your usual range is '+rtxt('hr')+' BPM.':'your personal range is still being learned.'}`})():'No completed episode yet.';
- const env=n>=5?`Across ${n} episodes, average ambient conditions were ${avg(all.map(e=>e.rec[e.rec.length-1].amb)).toFixed(1)}°C and ${avg(all.map(e=>e.rec[e.rec.length-1].hum)).toFixed(0)}% humidity. This is an observation, not a cause.`:'Not enough data yet – environment patterns appear after 5 or more recorded episodes.';
- const sl=E.hist.length>3?(()=>{const h=E.hist.filter((_,i)=>i%Math.ceil(E.hist.length/120)===0);return`<svg viewBox="0 0 120 40" style="width:100%;height:60px"><polyline fill="none" stroke="var(--acc)" stroke-width="1.5" points="${h.map((v,i)=>`${i*120/Math.max(1,h.length-1)},${40-v*.38}`).join(' ')}"/></svg>`})():ND;
- const bl=active()?`<div class="tag">Baseline active</div> <div class="sub">Heart rate ${rtxt('hr')} BPM · HRV ${rtxt('hrv')} ms · SpO₂ ${rtxt('sp')}% · skin ${rtxt('st',1)}°C. Gradual updates continue.</div>`:`<div class="tag">Baseline learning in progress</div><div class="sub">Day ${Math.min(S.base.days+1,7)} of 7 · ${S.base.n.hr} usable samples.</div>`;
- return`<h1>Insights</h1><div class="tab2" style="margin-top:8px">${['today','week','month'].map(r=>`<button class="chip ${RANGE===r?'on':''}" data-a="range" data-r="${r}">${r[0].toUpperCase()+r.slice(1)}</button>`).join('')}</div>
-<div class="card"><h2>Stress trend</h2>${sl}<div class="u">Estimated score, this session (simulated data) · ${evs.length} episode(s) in this range</div></div>
-<div class="card"><h2>Personal baseline</h2>${bl}</div>
-<div class="card"><h2>Your stress signature</h2><div class="sub">${sig}</div></div>
-<div class="card"><h2>What usually happens before stress?</h2><div class="sub">${n>=3?`In the 10–30 seconds before ${n} recorded episodes, heart rate rose on average ${avg(all.map(e=>{const a=e.rec.slice(0,5),b=e.rec.slice(20,30);return avg(b.map(x=>x.hr))-avg(a.map(x=>x.hr))})).toFixed(0)} BPM. (Prototype timescale is seconds; real use will use minutes.)`:'Not enough data yet – needs at least 3 recorded episodes.'}</div></div>
-<div class="card"><h2>Trigger patterns</h2><div class="sub">${trH}</div>${top?`<div style="margin-top:6px">You've recorded several episodes related to ${esc(top[0])}.</div>`:''}</div>
-<div class="card"><h2>Environment</h2><div class="sub">${env}</div></div>
-<div class="card"><h2>Return toward baseline</h2><div class="sub">${rc}</div></div>
-<div class="card"><h2>What helps me?</h2><div class="sub">${help}</div></div>
-<div class="card"><h2>Stress timeline</h2>${S.events.length?[...S.events].reverse().slice(0,8).map(e=>`<button class="chip" style="width:100%;text-align:left;border-radius:12px;margin-bottom:6px" data-a="ev" data-id="${e.id}">${fday(e.start)} ${fmt(e.start)} · ${STN[e.peak]} · ${e.marks.length} events</button>`).join(''):ND}</div>
-<div class="card"><div class="row sp"><h2>Trigger Journal</h2><button class="btn sm" data-a="jnew">New entry</button></div>${S.journal.length?[...S.journal].reverse().map(j=>`<div style="border-top:1px solid var(--line);padding:8px 0"><b>${esc(j.trig)}</b>${j.sub?' · '+esc(j.sub):''}<div class="u">${fday(j.t)} ${fmt(j.t)}${j.hr!=null?` · HR ${j.hr}, score ${j.sc}`:''}${j.sess?' · reset used':''}</div><div>${esc(j.text)}</div><div class="row" style="margin-top:4px"><button class="btn sm sec" data-a="jedit" data-id="${j.id}">Edit</button><button class="btn sm sec" data-a="jdel" data-id="${j.id}">Delete</button>${j.incl?'':'<span class="tag">excluded</span>'}</div></div>`).join(''):'<div class="sub">No entries yet. Writing is always optional.</div>'}</div>`}
-const tg=(k,l,d)=>`<label class="row sp" style="font-weight:400"><span><b>${l}</b><div class="sub">${d}</div></span><input type="checkbox" style="width:22px" data-a="tog" data-k="${k}" ${S.set[k]?'checked':''}></label>`;
-function profile(){const p=S.profile,st=P.status();
- return`<h1>Profile</h1>
-<div class="card" style="margin-top:10px"><div class="row sp"><h2>Personal information</h2><button class="btn sm sec" data-a="pedit">Edit</button></div><div>${esc(p.name)}</div><div class="sub">${p.age} yrs · ${p.wt} kg · ${p.ht} cm</div></div>
-<div class="card"><h2>Device connection</h2><div class="sub">ESP32: <b>Simulated</b> – no real BLE connection. The provider is replaceable (see <code>P</code> in code).</div></div>
-<div class="card"><h2>Sensor status</h2>${st.map(([a,b])=>`<div class="row sp"><span>${a}</span><span class="tag">${b}</span></div>`).join('')}</div>
-<div class="card"><h2>7-day learning status</h2><div class="sub">${active()?'Baseline active – gradual updates.':`Day ${Math.min(S.base.days+1,7)} of 7 · ${S.base.n.hr} usable samples (need 300+).`}</div><div class="bar" style="margin:8px 0"><i style="width:${Math.round(100*Math.min(1,(Math.min(S.base.days,7)/7+Math.min(1,S.base.n.hr/300))/2))}%"></i></div><div class="u">Progress = days elapsed and usable samples collected.</div></div>
-<div class="card"><div class="row sp"><div><h2>Emergency & Safety</h2><div class="sub">Helplines and trusted contacts</div></div><button class="btn sm red" data-a="emerg">Open</button></div></div>
-<div class="card"><h2>Privacy & data</h2><div class="sub" style="margin-bottom:6px">Everything is stored only in this browser (localStorage), <b>not encrypted</b>. Nothing is sent anywhere; the chatbot is simulated.</div>
-${tg('ai','AI personalization','Allow approved context to personalize responses')}${tg('jmem','Journal memory','Let chat reference journal entries marked "include"')}${tg('voice','Voice transcripts','Keep voice-to-text transcripts')}
-<div class="sub" style="margin:6px 0">Location context: not used or requested.</div>
-<div class="row wrap"><button class="btn sm sec" data-a="rbase">Reset baseline</button><button class="btn sm sec" data-a="delcon">Delete all contacts</button><button class="btn sm red" data-a="delall">Delete all app data</button></div></div>
-<div class="card"><h2>App settings</h2>${tg('auto','Start Silent Support automatically','Off = ask first with START / NOT NOW')}${tg('haptic','Haptics','Phone vibration only while the page is open; no sound')}${tg('sp','Stress prompts','In-app prompts only (no push notifications yet)')}${tg('jp','Journal prompts','In-app only')}
-<div class="sub">No clinical alert thresholds are implemented in this prototype.</div></div>`}
-function contactsHTML(compact){const cs=[...S.contacts].sort((a,b)=>b.pri-a.pri).filter(c=>!compact||c.pri);
- return`<h2 style="margin-top:8px">Emergency helplines</h2>${HELP.map(h=>`<div class="card row sp"><div><b>${h.n}</b><div class="sub">${h.d} · ${h.num}</div></div><a class="btn red sm" href="tel:${h.num}">Call</a></div>`).join('')}
-<div class="sub" style="margin-bottom:10px">These numbers are provided for emergency and support situations. If you are in immediate danger, contact emergency services or seek help from a trusted person nearby. Verify numbers for your country.</div>
-<div class="row sp"><h2>${compact?'Primary contacts':'My emergency contacts'}</h2>${compact?'':'<button class="btn sm" data-a="cadd">Add contact</button>'}</div>
-${cs.length?cs.map(c=>`<div class="card"><div class="row sp"><div><b>${esc(c.name)}</b>${c.pri?' <span class="tag">Primary</span>':''}<div class="sub">${esc(c.rel)} · ${esc(c.ph)}</div></div><a class="btn sm" href="tel:${esc(c.ph.replace(/[^+\d]/g,''))}">Call</a></div>${compact?'':`<div class="row" style="margin-top:8px"><button class="btn sm sec" data-a="cpri" data-id="${c.id}">${c.pri?'Unmark primary':'Mark primary'}</button><button class="btn sm sec" data-a="cedit" data-id="${c.id}">Edit</button><button class="btn sm sec" data-a="cdel" data-id="${c.id}">Delete</button></div>`}</div>`).join(''):`<div class="sub">${compact?'No primary contacts set.':'No contacts yet. Add someone you trust.'}</div>`}
-<div class="sub">The app never calls or messages anyone for you. Every call needs your tap.</div>`}
-const back=(t)=>`<div class="hd"><h1 style="font-size:22px">${t}</h1><button class="btn sm sec" data-a="back">Close</button></div>`;
-function form(f,title){return`${back(title)}<div class="card">${f}</div>`}
-function view(o){switch(o.k){
-case'support':return supportV();
-case'emerg':return back('Emergency & Safety')+contactsHTML(false);
-case'contact':return back('Contact someone')+contactsHTML(true);
-case'ev':return evV(S.events.find(e=>e.id===o.id));
-case'chat':return`<div class="hd"><h1 style="font-size:22px">Talk to me</h1><button class="btn sm sec" data-a="back">Close</button></div><div class="sub">Simulated assistant – no AI service connected, not a therapist. Nothing leaves your device.</div><div id="msgs" style="min-height:240px;margin:10px 0">${CH.map(m=>`<div class="msg ${m.r}">${esc(m.t)}</div>`).join('')}</div><div class="row wrap" style="margin-bottom:8px">${['Help me calm down','Explain my readings','I want to journal','Start breathing'].map(q=>`<button class="chip" data-a="cq" data-q="${q}">${q}</button>`).join('')}<button class="chip" style="color:var(--r)" data-a="emerg2">Get emergency help</button></div><div class="row"><input id="ci" placeholder="Type a message"><button class="btn" data-a="csend">Send</button></div>`;
-case'demo':return`${back('Demo controls')}<div class="card"><div class="sub">Developer/demo only. Simulated data, not hardware.</div><h3 style="margin-top:8px">Scenario</h3><div class="row wrap">${Object.entries(SCN).map(([k,v])=>`<button class="chip ${P.sc===k?'on':''}" data-a="scn" data-k="${k}">${v}</button>`).join('')}</div><h3 style="margin-top:12px">Baseline</h3><button class="btn sm sec" data-a="day">Simulate +1 day of learning</button><div class="sub">Adds 60 synthetic usable samples per day. Active after 7 days and 300+ samples.</div><h3 style="margin-top:12px">Signals</h3><button class="btn sm sec" data-a="drop">${P.dropSp?'Restore':'Drop'} SpO₂ signal</button></div>`;
-case'jform':{const j=o.id?S.journal.find(x=>x.id===o.id):null;return form(`<label>What was happening?</label><div class="row wrap" id="tr">${TRIG.map(t=>`<button class="chip ${j&&j.trig===t?'on':''}" data-a="jt" data-t="${t}">${t}</button>`).join('')}</div><label>Sub-trigger (optional)</label><input id="js" value="${esc(j?.sub||'')}"><label>What about it was stressful? (optional)</label><textarea id="jx" rows="3" placeholder="I feel like I haven't prepared enough.">${esc(j?.text||'')}</textarea><button class="btn sm sec" data-a="voice" style="margin-top:6px">Voice input</button><div class="u" id="vn"></div><label class="row" style="font-weight:400"><input type="checkbox" id="ji" style="width:22px" ${!j||j.incl?'checked':''}> Include in personalization (needs AI personalization on in Profile)</label><div class="err" id="je"></div><button class="btn full" data-a="jsave" data-id="${o.id||''}">Save entry</button>`,j?'Edit entry':'New journal entry')}
-case'cform':{const c=o.id?S.contacts.find(x=>x.id===o.id):null;return form(`<label>Contact name</label><input id="cn" value="${esc(c?.name||'')}"><label>Relationship</label><select id="cr">${['Mother','Father','Sister','Brother','Friend','Relative','Other'].map(r=>`<option ${c&&c.rel===r?'selected':''}>${r}</option>`).join('')}</select><label>Phone number</label><input id="cp" inputmode="tel" value="${esc(c?.ph||'')}" placeholder="+91 98765 43210"><label class="row" style="font-weight:400"><input type="checkbox" id="cpr" style="width:22px" ${c?.pri?'checked':''}> Primary contact</label><div class="err" id="ce"></div><button class="btn full" data-a="csave" data-id="${o.id||''}">Save contact</button>`,c?'Edit contact':'Add contact')}
-case'pform':{const p=S.profile;return form(`<label>Full name</label><input id="fn" value="${esc(p.name)}"><label>Age</label><input id="ag" inputmode="numeric" value="${p.age}"><label>Body weight (kg)</label><input id="wt" inputmode="decimal" value="${p.wt}"><label>Height (cm)</label><input id="ht" inputmode="decimal" value="${p.ht}"><div class="err" id="pe"></div><button class="btn full" data-a="psave2">Save</button>`,'Edit profile')}}}
-function supportV(){const m=SUP.mode;
- if(m==='choose')return`${back('Support')}<div class="card"><h3>Level 1 · Guided breathing</h3><div class="sub">4 s in, 4 s hold, 6 s out, 2 s rest (about 90 seconds).</div><button class="btn sm" data-a="sb">Start breathing</button></div><div class="card"><h3>Level 2 · Grounding</h3><div class="sub">Name things you see, hear and feel.</div><button class="btn sm" data-a="sg">Start grounding</button></div><div class="card"><h3>Level 3 · Talk to me</h3><div class="sub">Simulated conversational support.</div><button class="btn sm" data-a="chat">Open chat</button></div><div class="sub">Nothing is forced. You can skip or close anytime.</div>`;
- if(m==='breath')return`<div style="text-align:center"><h1>SILENT SUPPORT</h1><div class="sub">Follow the vibration.</div><div class="circle" id="circ"></div><h2 id="pl">Get ready</h2><div class="sub" id="vb"></div><div class="sub" id="tl"></div><div class="row" style="justify-content:center;margin-top:14px"><button class="btn sec" id="pb" data-a="pause">Pause</button><button class="btn" data-a="sfin">End</button></div><button class="chip" style="margin-top:12px" data-a="sg">Try grounding instead</button><div class="u" style="margin-top:14px">Vibration works only while this page is open and on devices that support it. Otherwise it is simulated visibly.</div></div>`;
- if(m==='ground'){const G=['Name 3 things you can see','Name 2 things you can hear','Name 1 thing you can feel'],i=SUP.gi;return`${back('Grounding')}<div class="card"><div class="sub">Step ${i+1} of 3</div><h2>${G[i]}</h2><div class="row" style="margin-top:10px"><button class="btn sm" data-a="gnext">${i<2?'Next':'Done'}</button><button class="btn sm sec" data-a="gnext">Skip</button><button class="btn sm sec" data-a="sclose">Stop</button></div></div>`}
- if(m==='check')return`${back('How are you feeling now?')}<div class="card"><div class="col">${['Better','A little better','Same','Still stressed','Worse'].map(f=>`<button class="btn sec full" style="margin-bottom:6px" data-a="rate" data-f="${f}">${f}</button>`).join('')}</div></div>`;
- const bad=['Still stressed','Worse'].includes(SUP.fb);return`${back('Thanks for checking in')}<div class="card"><div class="sub">You said: ${SUP.fb}. Readings that follow an exercise don't prove it caused any change.</div>${bad?`<div class="row wrap" style="margin-top:8px"><button class="btn sm" data-a="sg">Grounding</button><button class="btn sm" data-a="chat">Talk to Me</button><button class="btn sm red" data-a="contact">Contact Someone</button></div>`:''}<div class="row wrap" style="margin-top:8px"><button class="btn sm sec" data-a="jnew2">Journal this</button><button class="btn sm sec" data-a="chat">Open chat</button></div></div>`}
-function evV(e){if(!e)return back('Event');const pk=e.peakRow||e.rec[0],j=S.journal.filter(x=>x.evId===e.id),ss=S.sessions.filter(s=>s.evId===e.id);
- return`${back('Stress event')}<div class="card"><div class="row sp"><h2>${fday(e.start)} ${fmt(e.start)}</h2><span class="tag" style="color:${STC[e.peak]}">${STN[e.peak]}</span></div><div class="sub">Estimated peak score ${e.peakSc}/100 (rule-based prototype, not validated). Context: ${e.ctx}.</div></div>
-<div class="card"><h3>Sensor values at peak</h3><div class="sub">HR ${pk.hr} BPM · HRV ${pk.hrv} ms · SpO₂ ${pk.sp==null?'unavailable':pk.sp+'%'} · skin ${pk.st}°C · ${pk.act} · ${pk.amb}°C, ${pk.hum}%</div><h3 style="margin-top:8px">Baseline comparison</h3><div class="sub">${e.personal?`Your range then: HR ~${e.b.hr.toFixed(0)} BPM, HRV ~${e.b.hrv.toFixed(0)} ms.`:'Personal baseline was not yet active, so a generic reference was used.'}</div></div>
-<div class="card"><h3>Timeline</h3><div class="tl">${e.marks.map(m=>`<div><b>${fmt(m.t)}</b> ${esc(m.label)}</div>`).join('')}</div></div>
-<div class="card"><h3>Stress Replay</h3><input type="range" id="rp" min="0" max="${e.rec.length-1}" value="0" data-id="${e.id}"><div id="rpo" class="sub"></div></div>
-<div class="card"><h3>Return toward baseline</h3><div class="sub">${e.after?`HR ${pk.hr} → ${e.after.hr} BPM, HRV ${pk.hrv} → ${e.after.hrv} ms.`:'Event still in progress.'}</div><h3 style="margin-top:8px">Interventions</h3><div class="sub">${ss.length?ss.map(s=>`${s.type} (${s.dur||0}s) · HR ${s.hr0}→${s.hr1} · you said: ${s.fb}`).join('<br>'):'None recorded.'}</div><h3 style="margin-top:8px">Journal</h3><div class="sub">${j.length?j.map(x=>esc(x.trig+': '+x.text)).join('<br>'):'No entry linked.'}</div></div>
-<div class="row"><button class="btn sm" data-a="jnew3" data-id="${e.id}">Add journal entry</button><button class="btn sm sec" data-a="chat">Talk to me</button></div>`}
-function setReplay(){const r=$('#rp');if(!r)return;const e=S.events.find(x=>x.id===r.dataset.id),x=e.rec[+r.value],ph=x.t<e.start?'Before':e.end&&x.t>e.end?'After':'During';$('#rpo').textContent=`${ph} · ${fmt(x.t)} · HR ${x.hr}, HRV ${x.hrv}, score ${x.sc}`}
-function signup(){return`<div style="padding:24px 4px"><h1>Let's get to know you</h1><div class="sub">We'll use this information to personalize your health and stress monitoring.</div><label>Full name</label><input id="fn" autocomplete="name"><div class="err" id="e1"></div><label>Age</label><input id="ag" inputmode="numeric"><div class="err" id="e2"></div><label>Body weight (kg)</label><input id="wt" inputmode="decimal"><div class="err" id="e3"></div><label>Height (cm)</label><input id="ht" inputmode="decimal"><div class="err" id="e4"></div><button class="btn full" style="margin-top:12px" data-a="psave">Continue</button><div class="u" style="margin-top:10px">Stored only on this device (browser storage, not encrypted).</div></div>`}
-function onb(){return`<div style="padding:30px 4px"><h1>Let's learn what's normal for you</h1><p>During the first seven days, we'll learn your usual physiological patterns while you use the app normally.</p><div class="card"><h3>Day 1 of 7 · Baseline learning in progress</h3><div class="sub">Until enough reliable data exists, live monitoring is neutral and personal abnormality claims are avoided. Public datasets are not treated as your personal baseline.</div></div><div class="card sub">Prototype, not a medical device: it does not diagnose anxiety or any other condition. Use demo controls (Demo button) to simulate days.</div><button class="btn full" data-a="onb">Start</button></div>`}
-/* ===== RENDER / ROUTER ===== */
-function validate(g){const n=g('fn').trim(),a=+g('ag'),w=+g('wt').replace(',','.'),h=+g('ht').replace(',','.'),e={};
- if(n.length<2||n.length>60)e.fn='Enter your full name (2–60 characters).';
- if(!g('ag').trim()||!Number.isInteger(a)||a<5||a>120)e.ag='Enter a whole-number age between 5 and 120.';
- if(!g('wt').trim()||!(w>=20&&w<=300))e.wt='Enter a weight between 20 and 300 kg.';
- if(!g('ht').trim()||!(h>=50&&h<=250))e.ht='Enter a height between 50 and 250 cm.';return{e,v:{name:n,age:a,wt:w,ht:h}}}
-function render(){const m=$('#main');if(!S.profile){m.innerHTML=signup();return}if(!S.onb){m.innerHTML=onb();return}
- const sc=m.scrollTop;m.innerHTML=`<div style="display:flex;justify-content:flex-end"><button class="btn sm sec" data-a="demo">Demo controls</button></div>`+({home,monitor,insights,profile}[TAB])();m.scrollTop=sc;
- $('#nav')?.remove();const n=document.createElement('nav');n.id='nav';n.innerHTML=['home','monitor','insights','profile'].map(t=>`<button class="${TAB===t?'on':''}" data-a="tab" data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('');$('#app').insertBefore(n,$('#ov'));if(TAB==='monitor')ecgStart()}
-function ov(){const o=$('#ov'),t=OV[OV.length-1];o.innerHTML=t?view(t):'';o.scrollTop=0;if(t&&t.k==='ev')setReplay();if(t&&t.k==='chat'){if(!CH.length){CH.push({r:'bot',t:'Hi, I\'m a simulated assistant. '+chatCtx()});ov();return}}}
-const push=o=>{OV.push(o);ov()};
-function live(){document.querySelectorAll('[data-v]').forEach(e=>{const k=e.dataset.v,r=E.r;e.textContent=k==='score'?Math.round(E.sc):k==='state'?STN[E.state]:k==='insight'?insight():k==='sp2'?(r.sp==null?'Unreliable':r.sp+'%'):k==='st'&&e.classList.contains('m')?r.st+'°C':val(k)})}
-let lastSig='';
-setInterval(()=>{const r=P.tick();E.step(r);const b=S.base;if(r.mv==='Low'&&E.state==='LOW'&&!['Exercising','Walking'].includes(S.ctx)&&(b.days<7||Math.random()<.2)){['hr','hrv','st'].forEach(k=>upd(k,r[k]));if(r.sp!=null)upd('sp',r.sp)}
- if(S.profile&&S.onb){const sig=E.state+E.stage+active()+r.sp+(E.ev&&E.ev.offered)+(Date.now()>E.dis);if(sig!==lastSig){lastSig=sig;if(!OV.length)render()}else live()}},1000);
-/* ECG (simulated waveform) */
-let ecgOn=false,buf=[],ph=0,lt=0;const g=(x,c,w,a)=>a*Math.exp(-((x-c)**2)/(2*w*w));
-function ecgStart(){if(ecgOn)return;ecgOn=true;lt=performance.now();requestAnimationFrame(ecgLoop)}
-function ecgLoop(t){const c=$('#ecg');if(!c){ecgOn=false;return}const dt=(t-lt)/1000;lt=t;ph+=dt*E.r.hr/60;
- const n=Math.max(1,Math.round(dt*120));for(let i=0;i<n;i++){const x=(ph+i*0)%1;buf.push(g(x,.15,.025,.12)-g(x,.27,.008,.12)+g(x,.3,.01,1)-g(x,.33,.01,.2)+g(x,.55,.04,.25)+(Math.random()-.5)*.02)}
- while(buf.length>300)buf.shift();const w=c.width=c.clientWidth,h=c.height=c.clientHeight,x=c.getContext('2d');x.strokeStyle=getComputedStyle(document.body).getPropertyValue('--g')||'#3E9A74';x.strokeStyle='#3E9A74';x.lineWidth=1.6;x.beginPath();buf.forEach((v,i)=>{const px=i*w/300,py=h*.8-v*h*.65;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();requestAnimationFrame(ecgLoop)}
-/* ===== ACTIONS ===== */
-const gv=id=>$('#'+id)?.value??'';
-const A={
-tab(d){TAB=d.t;render();$('#main').scrollTop=0},range(d){RANGE=d.r;render()},ctx(d){S.ctx=d.c;save();render()},
-dis(){E.dis=Date.now()+3e5;render()},reset(){SUP.open('breath')},start(){if(E.ev)E.ev.offered=1;SUP.open('breath')},notnow(){if(E.ev)E.ev.offered=1;render()},
-supp(){SUP.run=true;SUP.mode='choose';push({k:'support'})},sb(){SUP.run=true;SUP.start()},sg(){SUP.stop();SUP.run=true;SUP.mode='ground';SUP.gi=0;ov()},
-gnext(){if(++SUP.gi>2){SUP.sess={id:uid(),type:'Grounding',start:Date.now(),hr0:E.r.hr,dur:60,evId:E.ev?.id||null};SUP.mode='check';SUP.gi=0}ov()},
-pause(){SUP.pause()},sfin(){SUP.finish()},sclose(){SUP.close()},rate(d){SUP.rate(d.f)},
-back(){if(SUP.run&&OV[OV.length-1].k==='support'){SUP.close();return}OV.pop();ov();render()},
-chat(){SUP.stop();OV=OV.filter(o=>o.k!=='support');push({k:'chat'})},emerg(){push({k:'emerg'})},emerg2(){push({k:'emerg'})},contact(){push({k:'contact'})},
-ev(d){push({k:'ev',id:d.id})},demo(){push({k:'demo'})},scn(d){P.sc=d.k;E.dis=0;ov()},drop(){P.dropSp=!P.dropSp;ov()},
-day(){const b=S.base;if(b.days<7)b.days++;for(let i=0;i<60;i++){['hr','hrv','st','sp'].forEach(k=>upd(k,SC.normal[k]+(Math.random()-.5)*({hr:6,hrv:8,st:.4,sp:1}[k])))}save();ov();render()},
-cq(d){say(d.q)},csend(){const v=gv('ci').trim();if(v)say(v)},
-jnew(){push({k:'jform'})},jnew2(){OV=OV.filter(o=>o.k!=='support');SUP.run=false;push({k:'jform',ev:SUP.sess?.evId})},jnew3(d){push({k:'jform',ev:d.id})},jedit(d){push({k:'jform',id:d.id})},
-jdel(d){if(confirm('Delete this entry?')){S.journal=S.journal.filter(x=>x.id!==d.id);save();render()}},
-jt(d,b){document.querySelectorAll('#tr .chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');b.dataset.sel=1},
-voice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S.set.voice){$('#vn').textContent='Voice transcripts are off in Privacy & data.';return}
- if(SR){const r=new SR();r.onresult=e=>{$('#jx').value+=(' '+e.results[0][0].transcript).trim();$('#vn').textContent='Transcribed by browser speech recognition.'};r.onerror=()=>$('#vn').textContent='Speech recognition failed.';r.start()}else{$('#jx').value+=' [Simulated transcript: I keep worrying about tomorrow.]';$('#vn').textContent='SIMULATED voice input – speech recognition unavailable here.'}},
-jsave(d){const t=document.querySelector('#tr .chip.on')?.dataset.t||document.querySelector('#tr .chip.on')?.textContent;if(!t){$('#je').textContent='Choose what was happening.';return}
- const o=OV[OV.length-1],ex=d.id?S.journal.find(x=>x.id===d.id):null,f={trig:t,sub:gv('js').trim(),text:gv('jx').trim(),incl:$('#ji').checked};
- if(ex)Object.assign(ex,f);else{const r=E.r;S.journal.push({id:uid(),t:Date.now(),...f,hr:r.hr,hrv:r.hrv,sc:Math.round(E.sc),evId:o.ev||E.ev?.id||null,sess:S.sessions.some(s=>s.evId&&s.evId===(o.ev||E.ev?.id))})}save();OV.pop();ov();render()},
-cadd(){push({k:'cform'})},cedit(d){push({k:'cform',id:d.id})},cpri(d){const c=S.contacts.find(x=>x.id===d.id);c.pri=c.pri?0:1;save();ov()},
-cdel(d){if(confirm('Delete this contact?')){S.contacts=S.contacts.filter(x=>x.id!==d.id);save();ov()}},
-csave(d){const n=gv('cn').trim(),p=gv('cp').trim(),dg=p.replace(/\D/g,'').length;if(n.length<2){$('#ce').textContent='Enter the contact\'s name.';return}
- if(!/^\+?[\d\s-]+$/.test(p)||dg<7||dg>15){$('#ce').textContent='Enter a valid phone number (7–15 digits, optional +).';return}
- const f={name:n,rel:gv('cr'),ph:p,pri:$('#cpr').checked?1:0},ex=d.id&&S.contacts.find(x=>x.id===d.id);if(ex)Object.assign(ex,f);else S.contacts.push({id:uid(),...f});save();OV.pop();ov()},
-tog(d,b){S.set[d.k]=b.checked;save()},
-psave(){const{e,v}=validate(gv);['fn','ag','wt','ht'].forEach((k,i)=>$('#e'+(i+1)).textContent=e[k]||'');if(Object.keys(e).length)return;S.profile=v;save();render()},
-onb(){S.onb=true;save();render()},pedit(){push({k:'pform'})},
-psave2(){const{e,v}=validate(gv);if(Object.keys(e).length){$('#pe').textContent=Object.values(e)[0];return}S.profile=v;save();OV.pop();ov();render()},
-rbase(){if(confirm('Reset your personal baseline? Learning restarts at day 1.')){S.base=DEF().base;save();render()}},
-delcon(){if(confirm('Delete all emergency contacts?')){S.contacts=[];save();render()}},
-delall(){if(confirm('Delete ALL app data, including profile, journal and contacts?')){S=DEF();save();E.ev=null;E.sc=0;E.state='LOW';TAB='home';OV=[];ov();render()}}};
-function say(q){CH.push({r:'me',t:q});const r=reply(q);CH.push({r:'bot',t:r.t});ov();const m=$('#msgs');
- if(r.act||r.em||r.j){const d=document.createElement('div');d.className='row wrap';d.innerHTML=(r.act?'<button class="btn sm" data-a="sb">Start breathing</button><button class="btn sm sec" data-a="sg">Grounding</button>':'')+(r.em?'<button class="btn sm red" data-a="emerg2">Get emergency help</button>':'')+(r.j?'<button class="btn sm" data-a="jnew">Open journal</button>':'');m.appendChild(d)}}
-document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a])A[b.dataset.a](b.dataset,b)});
-document.addEventListener('input',e=>{if(e.target.id==='rp')setReplay()});
-render();
-</script></body></html>
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>CalmSignal – AI Health & Stress Companion</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- Pre-compiled WESAD database bundle & Evidence Knowledge Base -->
+    <script src="wesad_bundle.js"></script>
+    <script src="evidence_base.js"></script>
+    <style>
+        :root {
+            --bg: #F3F6F5;
+            --card: #FFFFFF;
+            --ink: #172528;
+            --mut: #5F7477;
+            --line: #DFE6E4;
+            --acc: #27666A;
+            --acc-light: rgba(39, 102, 106, 0.08);
+            --acc-hover: #1F5255;
+            --g: #2E8B62;
+            --g-light: rgba(46, 139, 98, 0.12);
+            --a: #D49826;
+            --a-light: rgba(212, 152, 38, 0.12);
+            --o: #D45B28;
+            --o-light: rgba(212, 91, 40, 0.12);
+            --r: #BD3224;
+            --r-light: rgba(189, 50, 36, 0.12);
+            --rec: #3B8296;
+            --eda: #7D3C98;
+            --eda-light: rgba(125, 60, 152, 0.1);
+            --shadow-sm: 0 2px 6px rgba(23, 37, 40, 0.04);
+            --shadow-md: 0 8px 24px -4px rgba(23, 37, 40, 0.08);
+            box-sizing: border-box;
+            padding-top: env(safe-area-inset-top, 0px);
+            padding-bottom: env(safe-area-inset-bottom, 0px)
+        }
+
+        @media(prefers-color-scheme:dark) {
+            :root:not([data-theme="light"]) {
+                --bg: #0F1618;
+                --card: #172224;
+                --ink: #E7F0EE;
+                --mut: #859B9E;
+                --line: #223235;
+                --acc: #55B4B9;
+                --acc-light: rgba(85, 180, 185, 0.12);
+                --acc-hover: #6BC5CA;
+                --g: #3EAA79;
+                --g-light: rgba(62, 170, 121, 0.16);
+                --a: #E0A738;
+                --a-light: rgba(224, 167, 56, 0.16);
+                --o: #E26D3B;
+                --o-light: rgba(226, 109, 59, 0.16);
+                --r: #D64537;
+                --r-light: rgba(214, 69, 55, 0.16);
+                --rec: #4FA2B8;
+                --eda: #A569BD;
+                --eda-light: rgba(165, 105, 189, 0.15);
+                --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.3);
+                --shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.45)
+            }
+        }
+
+        :root[data-theme="dark"] {
+            --bg: #0F1618;
+            --card: #172224;
+            --ink: #E7F0EE;
+            --mut: #859B9E;
+            --line: #223235;
+            --acc: #55B4B9;
+            --acc-light: rgba(85, 180, 185, 0.12);
+            --acc-hover: #6BC5CA;
+            --g: #3EAA79;
+            --g-light: rgba(62, 170, 121, 0.16);
+            --a: #E0A738;
+            --a-light: rgba(224, 167, 56, 0.16);
+            --o: #E26D3B;
+            --o-light: rgba(226, 109, 59, 0.16);
+            --r: #D64537;
+            --r-light: rgba(214, 69, 55, 0.16);
+            --rec: #4FA2B8;
+            --eda: #A569BD;
+            --eda-light: rgba(165, 105, 189, 0.15);
+            --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.45)
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--ink);
+            font: 14.5px/1.45 Manrope, system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased
+        }
+
+        #app {
+            max-width: 520px;
+            height: 100%;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background: var(--bg);
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.07)
+        }
+
+        #main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px 16px 24px;
+            scroll-behavior: smooth
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow-sm);
+            transition: all .2s ease
+        }
+
+        h1,
+        h2,
+        h3,
+        h4 {
+            margin: 0 0 6px;
+            font-weight: 600
+        }
+
+        h1 {
+            font: 500 27px/1.18 Fraunces, Georgia, serif;
+            letter-spacing: -0.3px
+        }
+
+        h2 {
+            font-size: 16.5px;
+            letter-spacing: -0.2px
+        }
+
+        h3 {
+            font-size: 14px
+        }
+
+        .sub {
+            color: var(--mut);
+            font-size: 13px;
+            line-height: 1.4
+        }
+
+        .big {
+            font: 500 50px/1 Fraunces, Georgia, serif;
+            letter-spacing: -1px
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            border: 0;
+            border-radius: 13px;
+            padding: 10px 16px;
+            background: var(--acc);
+            color: #fff;
+            font: 600 13.5px Manrope, sans-serif;
+            text-decoration: none;
+            cursor: pointer;
+            text-align: center;
+            transition: all .15s ease
+        }
+
+        .btn:hover {
+            filter: brightness(1.06);
+            transform: translateY(-1px)
+        }
+
+        .btn:active {
+            transform: translateY(0)
+        }
+
+        .btn.sec {
+            background: transparent;
+            color: var(--acc);
+            border: 1px solid var(--line)
+        }
+
+        .btn.sec:hover {
+            background: var(--acc-light);
+            border-color: var(--acc)
+        }
+
+        .btn.red {
+            background: var(--r);
+            color: #fff
+        }
+
+        .btn.sm {
+            padding: 6px 11px;
+            font-size: 12px;
+            border-radius: 10px
+        }
+
+        .btn.full {
+            display: flex;
+            width: 100%
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: center
+        }
+
+        .sp {
+            justify-content: space-between
+        }
+
+        .wrap {
+            flex-wrap: wrap
+        }
+
+        .g2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px
+        }
+
+        .g3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 11px;
+            border-radius: 99px;
+            border: 1px solid var(--line);
+            font-size: 12px;
+            background: var(--card);
+            color: var(--ink);
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+            transition: all .15s ease
+        }
+
+        .chip:hover {
+            border-color: var(--acc)
+        }
+
+        .chip.on {
+            background: var(--acc);
+            color: #fff;
+            border-color: var(--acc)
+        }
+
+        .tag {
+            font-size: 10.5px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 99px;
+            background: var(--line);
+            color: var(--mut);
+            letter-spacing: 0.2px;
+            text-transform: uppercase
+        }
+
+        .tag.gold {
+            background: rgba(212, 152, 38, 0.15);
+            color: var(--a)
+        }
+
+        .tag.red {
+            background: var(--r-light);
+            color: var(--r)
+        }
+
+        .tag.green {
+            background: var(--g-light);
+            color: var(--g)
+        }
+
+        .m {
+            font: 700 23px/1.1 Manrope;
+            letter-spacing: -0.5px
+        }
+
+        .u {
+            font-size: 11.5px;
+            color: var(--mut);
+            font-weight: 500
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: var(--bg);
+            color: var(--ink);
+            font: inherit;
+            transition: border-color .15s
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--acc);
+            box-shadow: 0 0 0 2px var(--acc-light)
+        }
+
+        label {
+            display: block;
+            font-size: 12.5px;
+            font-weight: 600;
+            margin: 10px 0 3px
+        }
+
+        .err {
+            color: var(--r);
+            font-size: 11.5px;
+            min-height: 16px;
+            margin-top: 2px
+        }
+
+        nav {
+            display: flex;
+            border-top: 1px solid var(--line);
+            background: var(--card);
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03)
+        }
+
+        nav button {
+            flex: 1;
+            padding: 11px 0 9px;
+            border: 0;
+            background: none;
+            color: var(--mut);
+            font: 600 12px Manrope;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            transition: color .15s ease
+        }
+
+        nav button.on {
+            color: var(--acc);
+            box-shadow: inset 0 3px var(--acc);
+            font-weight: 700
+        }
+
+        #ov {
+            position: absolute;
+            inset: 0;
+            background: var(--bg);
+            overflow-y: auto;
+            padding: 14px 16px 28px;
+            z-index: 100
+        }
+
+        #ov:empty {
+            display: none
+        }
+
+        .hd {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px
+        }
+
+        canvas {
+            width: 100%;
+            height: 85px;
+            display: block;
+            background: var(--bg);
+            border-radius: 12px
+        }
+
+        .circle {
+            width: 175px;
+            height: 175px;
+            border-radius: 50%;
+            margin: 24px auto;
+            background: radial-gradient(circle, var(--acc), rgba(39, 102, 106, 0.35));
+            transform: scale(.55)
+        }
+
+        .tl {
+            border-left: 2px solid var(--line);
+            padding-left: 12px;
+            margin-left: 4px
+        }
+
+        .tl div {
+            margin-bottom: 8px
+        }
+
+        .bar {
+            height: 7px;
+            border-radius: 9px;
+            background: var(--line);
+            overflow: hidden
+        }
+
+        .bar i {
+            display: block;
+            height: 100%;
+            background: var(--acc);
+            transition: width .4s ease
+        }
+
+        .msg {
+            padding: 10px 14px;
+            border-radius: 16px;
+            margin: 6px 0;
+            max-width: 88%;
+            font-size: 13.5px;
+            line-height: 1.45
+        }
+
+        .msg.bot {
+            background: var(--card);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow-sm)
+        }
+
+        .msg.me {
+            background: var(--acc);
+            color: #fff;
+            margin-left: auto
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            background: var(--g);
+            box-shadow: 0 0 0 rgba(46, 139, 98, 0.4);
+            animation: pulse 1.8s infinite
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(46, 139, 98, 0.7)
+            }
+
+            70% {
+                box-shadow: 0 0 0 7px rgba(46, 139, 98, 0)
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(46, 139, 98, 0)
+            }
+        }
+
+        .pulse-dot.orange {
+            background: var(--o);
+            animation: pulse-o 1.8s infinite
+        }
+
+        @keyframes pulse-o {
+            0% {
+                box-shadow: 0 0 0 0 rgba(212, 91, 40, 0.7)
+            }
+
+            70% {
+                box-shadow: 0 0 0 7px rgba(212, 91, 40, 0)
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(212, 91, 40, 0)
+            }
+        }
+
+        .wesad-badge {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            padding: 2px 6px;
+            border-radius: 6px;
+            background: var(--acc-light);
+            color: var(--acc);
+            text-transform: uppercase
+        }
+
+        .evidence-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(39, 102, 106, 0.1);
+            color: var(--acc);
+            cursor: pointer;
+            margin-top: 6px;
+            transition: background .15s
+        }
+
+        .evidence-pill:hover {
+            background: rgba(39, 102, 106, 0.2)
+        }
+
+        .meter-bar {
+            position: relative;
+            height: 6px;
+            border-radius: 4px;
+            background: linear-gradient(to right, var(--g) 0%, var(--a) 45%, var(--o) 80%, var(--r) 100%);
+            margin: 6px 0
+        }
+
+        .meter-pin {
+            position: absolute;
+            top: -4px;
+            width: 3px;
+            height: 14px;
+            background: var(--ink);
+            border-radius: 2px;
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+            transition: left .3s ease
+        }
+
+        .demo-banner {
+            background: var(--a-light);
+            border: 1px solid var(--a);
+            color: var(--ink);
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-size: 11.5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px
+        }
+
+        .password-box {
+            position: relative
+        }
+
+        .password-box input {
+            padding-right: 40px
+        }
+
+        .pwd-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--mut);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600
+        }
+
+        .auth-nav {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 10px
+        }
+
+        .auth-nav button {
+            background: none;
+            border: none;
+            font: 600 13px Manrope;
+            color: var(--mut);
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 8px;
+            transition: all .15s
+        }
+
+        .auth-nav button.active {
+            background: var(--acc-light);
+            color: var(--acc)
+        }
+
+        @media(prefers-reduced-motion:reduce) {
+            * {
+                transition: none !important;
+                animation: none !important
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div id="main"></div>
+        <div id="ov"></div>
+    </div>
+    <script>
+        /* ==========================================================================
+           WESAD DATABASE & EVIDENCE INITIALIZATION
+           ========================================================================== */
+        let WESAD = window.WESAD_DATA || null;
+        if (!WESAD) {
+            fetch('wesad_data.json').then(r => r.json()).then(d => { WESAD = window.WESAD_DATA = d; }).catch(() => { });
+        }
+        const EVIDENCE = window.EVIDENCE_KNOWLEDGE_BASE || [];
+
+        // Fallback WESAD Population Norms (from all 15 subjects)
+        const WESAD_POP_DEFAULTS = {
+            LOW: { hr: { mean: 79.7, std: 10.1 }, rmssd: { mean: 65.0, std: 29.4 }, eda: { mean: 2.66, std: 2.99 }, temp: { mean: 32.30, std: 1.76 } },
+            HIGH: { hr: { mean: 70.6, std: 7.0 }, rmssd: { mean: 77.1, std: 32.5 }, eda: { mean: 1.17, std: 1.55 }, temp: { mean: 33.33, std: 1.52 } },
+            ELEVATED: { hr: { mean: 76.5, std: 14.2 }, rmssd: { mean: 69.8, std: 31.5 }, eda: { mean: 1.38, std: 1.60 }, temp: { mean: 32.69, std: 1.58 } },
+            RECOVERING: { hr: { mean: 81.2, std: 16.6 }, rmssd: { mean: 73.6, std: 37.6 }, eda: { mean: 2.10, std: 2.77 }, temp: { mean: 32.46, std: 1.28 } }
+        };
+        const getPopNorm = (st, k) => (WESAD?.population_norms?.[st]?.[k]?.mean) ?? (WESAD_POP_DEFAULTS[st]?.[k]?.mean);
+
+        /* ===== CONFIG & VERIFIED CRISIS HELPLINES ===== */
+        const HELP = [
+            { n: 'Tele-MANAS (Mental Health Support)', num: '14416', d: 'Toll-free 24/7 National Mental Health Programme (India)' },
+            { n: 'Emergency Services', num: '112', d: 'Police, Fire, Ambulance' },
+            { n: 'Vandrevala Foundation', num: '+919999666555', d: '24/7 Free, Confidential Crisis Counseling' },
+            { n: 'iCall Psychosocial Helpline', num: '9152987821', d: 'TISS Professional Counseling Services' },
+            { n: '988 Suicide & Crisis Lifeline', num: '988', d: 'Free & Confidential (US & Canada)' }
+        ];
+
+        const TRIG = ['Studies/Exams', 'Friends/Relationships', 'Family', 'Work/Responsibilities', 'Sleep/Fatigue', 'Overthinking', 'Social Media', 'Travel/Environment', 'Physical Discomfort', 'Something Else'];
+        const CTXS = ['Resting', 'Studying', 'Walking', 'Exercising', 'Working', 'Travelling', 'Sleeping', 'Socializing', 'Other'];
+        const STN = { LOW: 'CALM BASELINE', ELEVATED: 'ELEVATED AROUSAL', HIGH: 'ACUTE STRESS (TSST)', RECOVERING: 'MEDITATION / RECOVERY' };
+        const STC = { LOW: 'var(--g)', ELEVATED: 'var(--a)', HIGH: 'var(--o)', RECOVERING: 'var(--rec)' };
+
+        /* ==========================================================================
+           AUTHENTICATION, SESSIONS & USER ISOLATION
+           ========================================================================== */
+        const AUTH_KEY = 'calmsignal_auth_session';
+        let AUTH = {
+            user: null,       // { id, name, email, age, weight, height }
+            token: null,      // session token
+            isDemo: false
+        };
+
+        // Restore saved session from localStorage
+        try {
+            const savedAuth = JSON.parse(localStorage.getItem(AUTH_KEY));
+            if (savedAuth && (savedAuth.user || savedAuth.isDemo)) {
+                AUTH = savedAuth;
+            }
+        } catch (e) { }
+
+        // SHA-256 password hashing helper for authentic client-side fallback
+        async function sha256(str) {
+            try {
+                const buf = new TextEncoder().encode(str);
+                const hash = await crypto.subtle.digest('SHA-256', buf);
+                return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+            } catch (e) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                return Math.abs(hash).toString(16);
+            }
+        }
+
+        // User-specific storage key to guarantee complete multi-user data isolation
+        function getUserStorageKey() {
+            if (AUTH.isDemo) return 'calmsignal_store_demo';
+            if (AUTH.user && AUTH.user.id) return `calmsignal_store_${AUTH.user.id}`;
+            return 'calmsignal_store_guest';
+        }
+
+        const DEF_STORE = () => ({
+            profile: null,
+            contacts: [],       // { id, name, rel, ph, email, cat ('emergency'|'personal'), pri: 0|1, notes }
+            journal: [],        // { id, t, trig, text, hr, sc }
+            sessions: [],
+            events: [],
+            base: {
+                days: 0,
+                n: { hr: 0, hrv: 0, eda: 0, st: 0, sp: 0 },
+                m: { hr: 78.5, hrv: 62.0, eda: 1.85, st: 33.0, sp: 98 },
+                v: { hr: 25.0, hrv: 120.0, eda: 0.8, st: 0.3, sp: 0.5 }
+            },
+            chatHistory: [],    // { r: 'bot'|'me', t, time, evRef }
+            chatPrefs: { prefersNoBreathing: false, rejectedTopics: [] },
+            set: { auto: false, haptic: true, sp: true, jp: true, ai: true, jmem: true, chatMemory: true },
+            ctx: 'Resting'
+        });
+
+        let S = DEF_STORE();
+
+        function loadActiveStore() {
+            const k = getUserStorageKey();
+            try {
+                const raw = localStorage.getItem(k);
+                if (raw) S = JSON.parse(raw);
+                else S = DEF_STORE();
+            } catch (e) {
+                S = DEF_STORE();
+            }
+            // Ensure profile matches authenticated user
+            if (AUTH.user) {
+                S.profile = S.profile || {};
+                S.profile.name = AUTH.user.name;
+                S.profile.email = AUTH.user.email;
+                S.profile.age = AUTH.user.age;
+                S.profile.wt = AUTH.user.weight;
+                S.profile.ht = AUTH.user.height;
+            }
+        }
+
+        const save = () => {
+            try {
+                const k = getUserStorageKey();
+                localStorage.setItem(k, JSON.stringify(S));
+                // Asynchronously sync to backend server if logged in
+                if (AUTH.token && !AUTH.isDemo) {
+                    fetch('/api/user/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AUTH.token}` },
+                        body: JSON.stringify({
+                            contacts: S.contacts, journal: S.journal, events: S.events,
+                            sessions: S.sessions, base: S.base, chat_history: S.chatHistory, set: S.set
+                        })
+                    }).catch(() => { });
+                }
+            } catch (e) { }
+        };
+
+        loadActiveStore();
+
+        const uid = () => Math.random().toString(36).slice(2, 9);
+        const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const $ = s => document.querySelector(s);
+        const fmt = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const fday = t => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' });
+        const openEv = () => E.ev;
+        const lastEv = () => (S.events && S.events.length > 0 ? S.events[S.events.length - 1] : null);
+
+        /* ===== PHYSIOLOGICAL BASELINE ===== */
+        const FLOOR = { hr: 3, hrv: 6, eda: 0.1, st: 0.25, sp: 0.5 };
+        const REF = { hr: 78.5, hrv: 62.0, eda: 1.85, st: 33.0, sp: 98 };
+
+        const upd = (k, x) => {
+            if (x == null || isNaN(x)) return;
+            const b = S.base;
+            if (!b.n[k]) { b.n[k] = 0; b.m[k] = REF[k] || x; b.v[k] = 0; }
+            const n = ++b.n[k];
+            const d = x - b.m[k];
+            b.m[k] += d / n;
+            b.v[k] += d * (x - b.m[k]);
+        };
+
+        const sd = k => (S.base.n?.[k] > 1) ? Math.sqrt(S.base.v[k] / (S.base.n[k] - 1)) : (FLOOR[k] * 2);
+        const active = () => S.base.days >= 7 && (S.base.n?.hr || 0) >= 300;
+        const bm = k => (active() && S.base.n?.[k] > 30) ? S.base.m[k] : (REF[k] || 72);
+        const rng = k => {
+            const m = bm(k), s = Math.max(sd(k), FLOOR[k] || 1) * 1.25;
+            return [Math.max(0, m - s), m + s];
+        };
+        const rtxt = (k, d = 0) => (S.base.n?.[k] > 20 || active()) ? rng(k).map(x => x.toFixed(d)).join('–') : 'learning';
+
+        /* ==========================================================================
+           MULTI-SOURCE SENSOR INGESTION (Hardware + WESAD Empirical Replay)
+           ========================================================================== */
+        const P = {
+            mode: 'wesad',
+            srcLabel: 'WESAD Replay (S5 Acute Stress)',
+            connected: true,
+            packetsCount: 0,
+            lastPacketTime: Date.now(),
+            dropSp: false,
+            c: { hr: 74, hrv: 58, eda: 1.95, st: 33.2, sp: 98, act: 'Resting', mv: 'Low', amb: 26.8, hum: 55 },
+            wesadSubj: 'S5',
+            wesadScn: 'high',
+            wesadIdx: 0,
+
+            ingest(pkt, srcLabel) {
+                if (!pkt) return;
+                this.lastPacketTime = Date.now();
+                this.packetsCount++;
+                if (srcLabel) this.srcLabel = srcLabel;
+                this.connected = true;
+                if (pkt.hr != null) this.c.hr = +pkt.hr;
+                if (pkt.hrv != null) this.c.hrv = +pkt.hrv;
+                if (pkt.eda != null) this.c.eda = +pkt.eda;
+                if (pkt.st != null) this.c.st = +pkt.st;
+                if (pkt.sp != null) this.c.sp = +pkt.sp;
+                if (pkt.act != null) this.c.act = pkt.act;
+                if (pkt.mv != null) this.c.mv = pkt.mv;
+                if (pkt.amb != null) this.c.amb = +pkt.amb;
+                if (pkt.hum != null) this.c.hum = +pkt.hum;
+                if (typeof live === 'function') live();
+            },
+
+            async connectBLE() {
+                if (!navigator.bluetooth) {
+                    alert("Web Bluetooth requires Google Chrome, Microsoft Edge, or a WebBLE-enabled browser.");
+                    return false;
+                }
+                try {
+                    this.srcLabel = "Searching BLE devices...";
+                    const device = await navigator.bluetooth.requestDevice({
+                        acceptAllDevices: false,
+                        filters: [{ services: ['heart_rate'] }, { namePrefix: 'HealthBand' }, { namePrefix: 'ESP32' }],
+                        optionalServices: ['heart_rate', 'environmental_sensing', '6e400001-b5a3-f393-e0a9-e50e24dcca9e']
+                    });
+                    const server = await device.gatt.connect();
+                    this.mode = 'ble';
+                    this.srcLabel = `BLE: ${device.name || 'Wearable'}`;
+                    this.connected = true;
+                    try {
+                        const hrSvc = await server.getPrimaryService('heart_rate');
+                        const hrChar = await hrSvc.getCharacteristic('heart_rate_measurement');
+                        await hrChar.startNotifications();
+                        hrChar.addEventListener('characteristicvaluechanged', (e) => {
+                            const val = e.target.value;
+                            const flags = val.getUint8(0);
+                            const hr = (flags & 1) ? val.getUint16(1, true) : val.getUint8(1);
+                            let hrv = P.c.hrv;
+                            if (val.byteLength >= (flags & 1 ? 4 : 3) + 2) {
+                                const rr = val.getUint16(val.byteLength - 2, true) * (1000 / 1024);
+                                hrv = Math.round(rr * 0.08 + P.c.hrv * 0.92);
+                            }
+                            P.ingest({ hr, hrv, eda: P.c.eda, st: P.c.st, sp: 98 }, `BLE: ${device.name}`);
+                        });
+                    } catch (e) { }
+                    render();
+                    return true;
+                } catch (err) {
+                    alert("Bluetooth connection cancelled: " + err.message);
+                    return false;
+                }
+            },
+
+            async connectSerial() {
+                if (!navigator.serial) {
+                    alert("Web Serial requires Google Chrome or Microsoft Edge.");
+                    return false;
+                }
+                try {
+                    const port = await navigator.serial.requestPort();
+                    await port.open({ baudRate: 115200 });
+                    this.mode = 'serial';
+                    this.srcLabel = 'USB Serial ESP32 (115200)';
+                    this.connected = true;
+                    const textDecoder = new TextDecoderStream();
+                    port.readable.pipeTo(textDecoder.writable);
+                    const reader = textDecoder.readable.getReader();
+                    let buf = '';
+                    (async () => {
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            buf += value;
+                            const lines = buf.split('\n');
+                            buf = lines.pop();
+                            for (const line of lines) {
+                                const trimmed = line.trim();
+                                if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                                    try { P.ingest(JSON.parse(trimmed), 'USB Serial ESP32'); } catch (e) { }
+                                }
+                            }
+                        }
+                    })();
+                    render();
+                    return true;
+                } catch (err) {
+                    alert("Serial connection error: " + err.message);
+                    return false;
+                }
+            },
+
+            connectSSE(url = '/api/sensor-stream') {
+                this.mode = 'sse';
+                this.srcLabel = 'WiFi Network Stream';
+                try {
+                    const sse = new EventSource(url);
+                    sse.onmessage = (e) => {
+                        try { P.ingest(JSON.parse(e.data), 'WiFi Sensor Stream'); } catch (err) { }
+                    };
+                    sse.onopen = () => { P.connected = true; P.srcLabel = 'WiFi Server Active (8000)'; render(); };
+                    render();
+                } catch (e) { }
+            },
+
+            setWESADReplay(subj = 'S5', scenario = 'high') {
+                this.mode = 'wesad';
+                this.wesadSubj = subj;
+                this.wesadScn = scenario;
+                this.wesadIdx = 0;
+                const stream = WESAD?.replay_streams?.[subj]?.scenarios?.[scenario];
+                const scnName = stream?.title || scenario.toUpperCase();
+                this.srcLabel = `WESAD ${subj} (${scnName})`;
+                this.connected = true;
+                render();
+            },
+
+            tick() {
+                if (this.mode === 'wesad') {
+                    const stream = WESAD?.replay_streams?.[this.wesadSubj]?.scenarios?.[this.wesadScn]?.points;
+                    if (stream && stream.length > 0) {
+                        const pt = stream[this.wesadIdx % stream.length];
+                        this.wesadIdx++;
+                        const j_hr = (Math.random() - 0.5) * 1.0;
+                        const j_eda = (Math.random() - 0.5) * 0.03;
+                        this.c.hr = Math.max(45, Math.round(pt.hr + j_hr));
+                        this.c.hrv = Math.max(15, Math.round(pt.hrv + (Math.random() - 0.5) * 1.5));
+                        this.c.eda = Math.max(0.05, +(pt.eda + j_eda).toFixed(3));
+                        this.c.st = +(pt.st + (Math.random() - 0.5) * 0.03).toFixed(2);
+                        this.c.sp = this.dropSp ? null : pt.sp;
+                        this.c.act = pt.act;
+                        this.c.mv = pt.mv;
+                        this.c.amb = 26.8;
+                        this.c.hum = 55;
+                    }
+                } else if (this.mode === 'sim') {
+                    const nz = { hr: 1.2, hrv: 1.8, eda: 0.02, st: 0.02 };
+                    for (const k in nz) this.c[k] += (Math.random() - 0.5) * nz[k];
+                    this.c.hr = Math.round(this.c.hr);
+                    this.c.hrv = Math.round(this.c.hrv);
+                    this.c.eda = +Math.max(0.1, this.c.eda).toFixed(3);
+                    this.c.st = +this.c.st.toFixed(2);
+                }
+                return this.read();
+            },
+
+            read() {
+                const c = this.c;
+                return {
+                    hr: Math.round(c.hr),
+                    hrv: Math.round(c.hrv),
+                    eda: +c.eda.toFixed(3),
+                    st: +c.st.toFixed(2),
+                    sp: this.dropSp ? null : Math.round(Math.min(100, Math.max(70, c.sp))),
+                    act: c.act || 'Resting',
+                    mv: c.mv || 'Low',
+                    amb: +c.amb.toFixed(1),
+                    hum: Math.round(c.hum)
+                };
+            },
+
+            status() {
+                return [
+                    ['Data Source', this.srcLabel],
+                    ['Hardware Link', this.mode === 'ble' ? 'Bluetooth LE' : this.mode === 'serial' ? 'USB COM Serial' : this.mode === 'sse' ? 'WiFi Stream' : 'WESAD Database Replay'],
+                    ['EDA / GSR Sensor', this.c.eda ? `${this.c.eda} μS (Active)` : 'Standby'],
+                    ['Pulse / SpO₂', this.dropSp ? 'Signal lost' : `${this.c.sp}% (Active)`],
+                    ['Skin Temperature', `${this.c.st}°C (Active)`],
+                    ['Packets Ingested', `${this.packetsCount} pkts`]
+                ];
+            }
+        };
+
+        /* ==========================================================================
+           WESAD MULTI-MODAL MACHINE LEARNING ENGINE
+           ========================================================================== */
+        const cl = x => Math.max(0, Math.min(1, x));
+
+        const E = {
+            sc: 0,
+            probStress: 0,
+            state: 'LOW',
+            stage: 'NORMAL',
+            r: P.read(),
+            ring: [],
+            hist: [],
+            ev: null,
+            calm: 0,
+            wesadMatch: { subject: 'S5', condition: 'TSST', similarity: 92 },
+
+            step(r) {
+                this.r = r;
+                const prev = this.state;
+                const isEx = ['Exercising', 'Walking'].includes(S.ctx) || r.mv !== 'Low';
+
+                const b_hr = bm('hr');
+                const b_hrv = bm('hrv');
+                const b_eda = bm('eda');
+                const b_temp = bm('st');
+
+                const d_hr = r.hr - b_hr;
+                const r_hr = r.hr / Math.max(30, b_hr);
+                const d_rmssd = r.hrv - b_hrv;
+                const r_rmssd = r.hrv / Math.max(10, b_hrv);
+                const d_eda = r.eda - b_eda;
+                const r_eda = r.eda / Math.max(0.1, b_eda);
+                const d_temp = r.st - b_temp;
+
+                // Evaluate WESAD Logistic Regression Model
+                const model = WESAD?.model;
+                let prob = 0.2;
+                if (model && model.scaler_mean && model.lr_coefficients) {
+                    const featVals = [d_hr, r_hr, d_rmssd, r_rmssd, d_eda, r_eda, d_temp, r.hr, r.hrv, r.eda, r.st];
+                    let z = model.lr_intercept || -1.138;
+                    for (let i = 0; i < featVals.length; i++) {
+                        const val = featVals[i];
+                        const mean = model.scaler_mean[i] ?? 0;
+                        const scale = model.scaler_scale[i] ?? 1;
+                        const coef = model.lr_coefficients[i] ?? 0;
+                        z += coef * ((val - mean) / Math.max(1e-5, scale));
+                    }
+                    prob = 1.0 / (1.0 + Math.exp(-Math.max(-10, Math.min(10, z))));
+                } else {
+                    const hrDev = cl((d_hr + 5) / 25);
+                    const hrvDev = cl((15 - d_rmssd) / 30);
+                    const edaDev = cl((d_eda + 0.5) / 3.0);
+                    prob = 0.45 * hrDev + 0.35 * edaDev + 0.20 * hrvDev;
+                }
+
+                if (isEx) prob *= 0.25; // Suppress false-alarm psychological stress during workouts
+                this.probStress = +prob.toFixed(3);
+
+                const rawScore = prob * 100;
+                this.sc = this.sc * 0.72 + rawScore * 0.28;
+                const s = this.sc;
+
+                let L = 'LOW';
+                if (s >= 58 || (prev === 'HIGH' && s >= 46)) {
+                    L = 'HIGH';
+                } else if (s >= 32 || (prev === 'ELEVATED' && s >= 26)) {
+                    L = (d_rmssd > 2 && d_hr < 0) ? 'RECOVERING' : 'ELEVATED';
+                } else if (['HIGH', 'ELEVATED', 'RECOVERING'].includes(prev) && s >= 18) {
+                    L = 'RECOVERING';
+                } else {
+                    L = 'LOW';
+                }
+
+                this.hist.push(s);
+                if (this.hist.length > 600) this.hist.shift();
+                const d = s - (this.hist[this.hist.length - 16] ?? s);
+                this.stage = L === 'HIGH' ? 'HIGH' : L === 'RECOVERING' ? 'RECOVERING' : L === 'ELEVATED' ? (d >= 4 ? 'RISING' : 'EARLY SIGNS') : (active() && s >= 20 && d >= 5 ? 'EARLY SIGNS' : 'NORMAL');
+
+                const row = { t: Date.now(), hr: r.hr, hrv: r.hrv, eda: r.eda, sc: Math.round(s), st: r.st, sp: r.sp, act: r.act };
+                this.ring.push(row);
+                if (this.ring.length > 300) this.ring.shift();
+                this.state = L;
+
+                this.computeWESADMatch(r);
+
+                if (L !== prev) {
+                    const lab = {
+                        ELEVATED: 'Signals moving away from baseline pattern',
+                        HIGH: 'Acute stress response pattern (WESAD TSST)',
+                        RECOVERING: 'Autonomic recovery trajectory',
+                        LOW: 'Within personal baseline bounds'
+                    }[L];
+
+                    if (!this.ev && (L === 'ELEVATED' || L === 'HIGH')) {
+                        this.ev = {
+                            id: uid(), start: row.t, end: null, peak: L, peakSc: row.sc, ctx: S.ctx, personal: active(),
+                            b: { hr: b_hr, hrv: b_hrv, eda: b_eda, st: b_temp },
+                            rec: this.ring.slice(-30), marks: []
+                        };
+                        S.events.push(this.ev);
+                    }
+                    if (this.ev) this.ev.marks.push({ t: row.t, label: lab });
+                    if (L === 'HIGH' && S.set.auto && !SUP.run) SUP.open('breath');
+                }
+
+                const ev = this.ev;
+                if (ev) {
+                    if (ev.rec[ev.rec.length - 1] !== row) ev.rec.push(row);
+                    if (row.sc >= ev.peakSc) { ev.peakSc = row.sc; ev.peakRow = row; }
+                    if (L === 'HIGH') ev.peak = 'HIGH';
+                    if (L === 'LOW') {
+                        if (++this.calm >= 18) {
+                            ev.end = row.t; ev.after = row; this.ev = null; this.calm = 0; save();
+                        }
+                    } else {
+                        this.calm = 0;
+                    }
+                }
+            },
+
+            computeWESADMatch(r) {
+                const stats = WESAD?.subject_condition_stats;
+                if (!stats) return;
+                let bestSubj = 'S5', bestCond = 'TSST', bestScore = 9999;
+                for (const subj in stats) {
+                    for (const cond in stats[subj]) {
+                        const cs = stats[subj][cond];
+                        if (!cs || !cs.hr || !cs.eda) continue;
+                        const hrDiff = Math.abs(r.hr - cs.hr.mean) / 12.0;
+                        const edaDiff = Math.abs(r.eda - cs.eda.mean) / 2.0;
+                        const tempDiff = Math.abs(r.st - cs.temp.mean) / 1.5;
+                        const dist = hrDiff * 0.45 + edaDiff * 0.40 + tempDiff * 0.15;
+                        if (dist < bestScore) {
+                            bestScore = dist;
+                            bestSubj = subj;
+                            bestCond = cond;
+                        }
+                    }
+                }
+                const simPct = Math.max(65, Math.min(98, Math.round(100 - bestScore * 18)));
+                this.wesadMatch = { subject: bestSubj, condition: bestCond, similarity: simPct };
+            }
+        };
+
+        /* ==========================================================================
+           EVIDENCE-BASED PSYCHOLOGICAL COMPANION (AI CHATBOT ENGINE)
+           ========================================================================== */
+        function generateEvidenceResponse(userMessage) {
+            const msg = userMessage.trim().toLowerCase();
+            const r = E.r;
+            const prefs = S.chatPrefs || {};
+
+            // 1. URGENT CRISIS & SAFETY DETECTION
+            if (/(hurt myself|suicid|kill myself|end my life|want to die|no reason to live|can't go on|cant go on|better off dead)/i.test(msg)) {
+                const primaryContact = S.contacts.find(c => c.pri && c.ph);
+                let contactPrompt = "";
+                if (primaryContact) {
+                    contactPrompt = `\n\nI also see you have **${esc(primaryContact.name)}** (${esc(primaryContact.rel)}) listed as your trusted contact. Would you like to call them directly right now?`;
+                }
+                return {
+                    t: `I'm so sorry you're feeling this level of pain and despair. Please know that your life has immense worth, and you do not have to carry this alone. I am an AI companion and cannot provide emergency medical care, but compassionate, confidential human support is available to you right this second.${contactPrompt}`,
+                    isCrisis: true,
+                    evidenceRef: null
+                };
+            }
+
+            // 2. USER FEEDBACK / ADAPTATION (e.g. "I hate breathing exercises", "breathing doesn't work")
+            if (/(hate breathing|stop breathing|breathing doesn't help|breathing does not help|can't breathe|no breathing|don't want to breathe)/i.test(msg)) {
+                prefs.prefersNoBreathing = true;
+                save();
+                return {
+                    t: `I hear you completely, and thank you for telling me. Paced breathing can actually feel restrictive or even increase discomfort for some people during anxiety. We will not use breathing exercises.\n\nInstead, would you like to try physical grounding (like feeling your feet firmly against the floor or feeling the texture of an object near you), or would you just prefer to vent and talk through what's on your mind?`,
+                    evidenceRef: "who-mhgap-stress"
+                };
+            }
+
+            // Retrieve matching clinical guidelines from evidence base
+            const evidenceMatches = (typeof retrieveEvidence === 'function') ? retrieveEvidence(msg, { state: E.state }) : [];
+            const primaryEvidence = evidenceMatches[0] || null;
+
+            // 3. ACUTE ANXIETY & PANIC ATTACK DISCLOSURE
+            if (/(anxiety attack|panic attack|panicking|freaking out|terrified|losing my mind|heart is beating so fast|having a panic)/i.test(msg)) {
+                let technique = "";
+                if (prefs.prefersNoBreathing) {
+                    technique = "Let's do a gentle sensory check right here with me. Can you feel the solid surface supporting your weight right now? Name one sound you can hear in your room.";
+                } else {
+                    technique = "Let's drop an anchor right now. Can you feel your feet resting on the floor? If you feel comfortable, let out a slow, gentle sigh through your mouth. You are safe in this physical moment.";
+                }
+
+                return {
+                    t: `I'm really sorry you're going through this right now. Anxiety and panic attacks can feel intensely physical and frightening, but as overwhelming as this sensation is, your body is experiencing a natural surge of adrenaline—it will pass, and you are not in medical danger. I'm right here with you.\n\n${technique}\n\nWhat are you noticing most right now in your body?`,
+                    evidenceRef: "clark-panic-1986"
+                };
+            }
+
+            // 4. ACADEMIC, COLLEGE & WORK OVERWHELM
+            if (/(college|exam|exams|assignment|deadline|work|boss|studying|fail|overwhelmed with work|too much to do)/i.test(msg)) {
+                return {
+                    t: `Feeling buried under academic deadlines or work pressure is deeply exhausting. When demands pile up, your brain's working memory gets flooded, and everything begins to feel equally urgent and impossible.\n\nFirst, take a gentle pause. You don't have to solve everything in this single hour. Would you like to just vent about what's feeling most unmanageable, or would it feel helpful to pick one tiny, manageable piece to break down together?`,
+                    evidenceRef: "who-mhgap-stress"
+                };
+            }
+
+            // 5. GUILT, SHAME, SELF-CRITICISM & FEELINGS OF FAILURE
+            if (/(i'm a failure|im a failure|hate myself|worthless|i ruined everything|my fault|so stupid|disappointed in myself)/i.test(msg)) {
+                return {
+                    t: `That inner critical voice can be so heavy and painful when things go wrong. When we're stressed, our minds often turn against us, treating mistakes as proof of who we are.\n\nClinical research on self-compassion shows that making mistakes is part of being human—not evidence of failure. If a dear friend came to you with this exact situation, you would likely offer them understanding rather than cruelty. Can we try offering that same gentleness to yourself for just a moment?`,
+                    evidenceRef: "neff-germer-self-compassion"
+                };
+            }
+
+            // 6. SENSOR INQUIRIES ("Does my heart rate prove I'm anxious?", "Explain my numbers")
+            if (/(reading|sensor|heart rate|bpm|eda|gsr|numbers|does this mean|am i stressed|proof)/i.test(msg)) {
+                return {
+                    t: `Here is what your sensors currently show: heart rate is **${r.hr} BPM**, HRV is **${r.hrv} ms**, and skin conductance (EDA) is **${r.eda} μS**.\n\nIt's very important to know: a sensor reading is biological information, **not a clinical diagnosis**. In research studies like WESAD, heart rate and skin conductance shift with physical movement, caffeine, room temperature, hydration, and excitement—not solely emotional anxiety. Your body is giving you context, not a verdict on who you are. How are you actually feeling emotionally?`,
+                    evidenceRef: "nice-cg113"
+                };
+            }
+
+            // 7. GROUNDING & SENSORY REQUEST
+            if (/(ground|54321|5-4-3-2-1|dizzy|spaced out|unreal|dissociat)/i.test(msg)) {
+                return {
+                    t: `Let's practice the 5-4-3-2-1 sensory grounding exercise recommended by NHS clinical guidelines to help anchor your attention back into the room:\n\n1. Look around and name **5 things you can see** right now.\n2. Notice **4 things you can physically touch** (the chair, fabric of your shirt, a table).\n3. Listen for **3 distinct sounds** around you.\n4. Notice **2 things you can smell**.\n5. Notice **1 physical feeling or taste**.\n\nTake your time with each one. Which 3 sounds do you notice first?`,
+                    evidenceRef: "nhs-grounding-54321"
+                };
+            }
+
+            // 8. GENERAL EMPATHETIC LISTENING / OPEN INQUIRY
+            return {
+                t: `Thank you for sharing that with me. I'm listening closely. When we carry things inside, they tend to feel much bigger and heavier. You don't have to have everything figured out right now.\n\nWould you like to tell me a little more about what triggered this, or would you prefer to explore some practical steps together?`,
+                evidenceRef: primaryEvidence ? primaryEvidence.id : "nice-cg113"
+            };
+        }
+
+        /* ==========================================================================
+           SUPPORT & SILENT BREATHING SESSIONS
+           ========================================================================== */
+        const PH = [['INHALE', 4], ['HOLD', 4], ['EXHALE', 6], ['REST', 2]];
+        const TOT = 96;
+        const HAP = { INHALE: [150, 350, 150, 350], HOLD: [400], EXHALE: [900, 200, 900, 200], REST: [] };
+
+        const SUP = {
+            run: false, mode: 'choose', el: 0, paused: false, tm: null, ph: '', sess: null, gi: 0,
+            open(m) {
+                this.run = true; this.mode = m; OV.length = 0; OV.push({ k: 'support' }); ov();
+                if (m === 'breath') this.start();
+            },
+            start() {
+                this.stop(); this.mode = 'breath'; this.el = 0; this.paused = false; this.ph = '';
+                this.sess = { id: uid(), type: 'Guided breathing', start: Date.now(), hr0: E.r.hr, evId: E.ev ? E.ev.id : null };
+                ov();
+                this.tm = setInterval(() => { if (!this.paused) { this.el += 0.1; this.tick(); } }, 100);
+            },
+            stop() { clearInterval(this.tm); this.tm = null; },
+            tick() {
+                if (this.el >= TOT) return this.finish();
+                let t = this.el % 16, i = 0;
+                while (t >= PH[i][1]) { t -= PH[i][1]; i++; }
+                const [n, d] = PH[i];
+                if (n !== this.ph) {
+                    this.ph = n;
+                    const c = $('#circ'), pl = $('#pl');
+                    if (c) {
+                        c.style.transition = `transform ${n === 'INHALE' || n === 'EXHALE' ? d : 0}s linear`;
+                        c.style.transform = n === 'INHALE' ? 'scale(1)' : n === 'EXHALE' ? 'scale(.55)' : c.style.transform;
+                    }
+                    if (pl) pl.textContent = n;
+                    if (S.set.haptic && navigator.vibrate) navigator.vibrate(HAP[n]);
+                }
+                const tm = $('#tl');
+                if (tm) tm.textContent = Math.max(0, Math.ceil(TOT - this.el)) + 's remaining';
+            },
+            pause() {
+                this.paused = !this.paused;
+                const b = $('#pb'); if (b) b.textContent = this.paused ? 'Resume' : 'Pause';
+                if (this.paused && navigator.vibrate) navigator.vibrate(0);
+            },
+            finish() {
+                this.stop();
+                if (this.sess) { this.sess.dur = Math.round(this.el); this.sess.hr1 = E.r.hr; }
+                this.mode = 'check'; ov();
+            },
+            rate(f) {
+                const s = this.sess;
+                if (s && !S.sessions.includes(s)) {
+                    s.fb = f; s.hr1 = E.r.hr; S.sessions.push(s); save();
+                }
+                this.fb = f; this.mode = 'after'; ov();
+            },
+            close() {
+                this.stop(); this.run = false; OV.length = 0; ov(); render();
+            }
+        };
+
+        /* ==========================================================================
+           VIEWS: AUTHENTICATION, HOME, MONITOR, INSIGHTS, PROFILE
+           ========================================================================== */
+        let TAB = 'home', RANGE = 'today', OV = [];
+        let authTab = 'login'; // 'login' | 'register'
+        let pwdVisible = false;
+
+        /* --- AUTHENTICATION SCREEN --- */
+        function authScreen() {
+            return `
+    <div style="padding:28px 10px 40px;text-align:center">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:99px;background:var(--acc-light);margin-bottom:14px">
+        <span class="pulse-dot"></span>
+        <span style="font-weight:700;font-size:12px;color:var(--acc);letter-spacing:0.4px">WESAD CLINICAL ENGINE</span>
+      </div>
+      <h1 style="font-size:32px;margin-bottom:6px">CalmSignal</h1>
+      <div class="sub" style="font-size:14px;max-width:340px;margin:0 auto 20px">
+        Personalized physiological stress monitoring with evidence-based psychological support.
+      </div>
+
+      <div class="card" style="text-align:left;max-width:440px;margin:0 auto;box-shadow:var(--shadow-md)">
+        <div class="auth-nav">
+          <button class="${authTab === 'login' ? 'active' : ''}" data-a="auth_tab" data-tab="login">Log In</button>
+          <button class="${authTab === 'register' ? 'active' : ''}" data-a="auth_tab" data-tab="register">Create Account</button>
+        </div>
+
+        ${authTab === 'login' ? loginFormHTML() : registerFormHTML()}
+
+        <div style="border-top:1px solid var(--line);margin-top:18px;padding-top:14px;text-align:center">
+          <button class="btn sm sec full" data-a="demo_mode" style="border-style:dashed">
+            ⚡ Try CalmSignal Demo (Simulated Benchmark)
+          </button>
+          <div class="u" style="margin-top:8px">No account required to test features & WESAD dataset replays.</div>
+        </div>
+      </div>
+    </div>
+  `;
+        }
+
+        function loginFormHTML() {
+            return `
+    <label>Email Address</label>
+    <input id="l_email" type="email" placeholder="name@example.com" autocomplete="username">
+    <div class="err" id="l_err_email"></div>
+
+    <label>Password</label>
+    <div class="password-box">
+      <input id="l_pwd" type="${pwdVisible ? 'text' : 'password'}" placeholder="••••••••" autocomplete="current-password">
+      <button type="button" class="pwd-toggle" data-a="toggle_pwd">${pwdVisible ? 'Hide' : 'Show'}</button>
+    </div>
+    <div class="err" id="l_err_pwd"></div>
+
+    <div class="row sp" style="margin:10px 0 16px">
+      <label class="row" style="font-size:12px;font-weight:400;margin:0;cursor:pointer">
+        <input type="checkbox" id="l_rem" style="width:16px;height:16px" checked> Keep me logged in
+      </label>
+      <button class="chip" data-a="forgot_pwd" style="border:none;padding:0;font-size:12px;color:var(--acc)">Forgot password?</button>
+    </div>
+
+    <button class="btn full" data-a="submit_login" id="btn_login">Log In</button>
+  `;
+        }
+
+        function registerFormHTML() {
+            return `
+    <label>Full Name</label>
+    <input id="r_name" placeholder="Piyush Arya" autocomplete="name">
+    <div class="err" id="r_err_name"></div>
+
+    <label>Email Address</label>
+    <input id="r_email" type="email" placeholder="name@example.com" autocomplete="email">
+    <div class="err" id="r_err_email"></div>
+
+    <div class="g3">
+      <div>
+        <label>Age (yrs)</label>
+        <input id="r_age" type="number" min="5" max="120" placeholder="27">
+        <div class="err" id="r_err_age"></div>
+      </div>
+      <div>
+        <label>Weight (kg)</label>
+        <input id="r_wt" type="number" step="0.5" placeholder="75">
+        <div class="err" id="r_err_wt"></div>
+      </div>
+      <div>
+        <label>Height (cm)</label>
+        <input id="r_ht" type="number" step="0.5" placeholder="175">
+        <div class="err" id="r_err_ht"></div>
+      </div>
+    </div>
+
+    <label>Password (min 6 characters)</label>
+    <div class="password-box">
+      <input id="r_pwd" type="${pwdVisible ? 'text' : 'password'}" placeholder="••••••••" autocomplete="new-password">
+      <button type="button" class="pwd-toggle" data-a="toggle_pwd">${pwdVisible ? 'Hide' : 'Show'}</button>
+    </div>
+    <div class="err" id="r_err_pwd"></div>
+
+    <label>Confirm Password</label>
+    <input id="r_pwd2" type="${pwdVisible ? 'text' : 'password'}" placeholder="••••••••" autocomplete="new-password">
+    <div class="err" id="r_err_pwd2"></div>
+
+    <button class="btn full" data-a="submit_register" id="btn_register" style="margin-top:10px">Create Account & Start</button>
+    <div class="u" style="margin-top:10px;text-align:center">Stored securely on your private device session.</div>
+  `;
+        }
+
+        /* --- HOME DASHBOARD --- */
+        const val = k => {
+            const r = E.r;
+            if (k === 'sp') return r.sp == null ? '—' : r.sp;
+            if (k === 'eda') return r.eda.toFixed(2);
+            return r[k];
+        };
+
+        const metric = (k, l, u) => `
+  <div class="card" style="margin:0">
+    <div class="u">${l}</div>
+    <div class="m"><span data-v="${k}">${val(k)}</span> <span class="u">${u}</span></div>
+  </div>
+`;
+
+        function home() {
+            const hr = new Date().getHours();
+            const g = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+            const st = E.state, r = E.r, e = lastEv();
+            const match = E.wesadMatch;
+            const userFirst = S.profile?.name ? esc(S.profile.name.split(' ')[0]) : (AUTH.isDemo ? 'Explorer' : 'Friend');
+
+            return `
+    ${AUTH.isDemo ? `
+      <div class="demo-banner">
+        <span>⚡ <b>DEMO MODE</b> · Using simulated data & WESAD clinical replays</span>
+        <button class="chip" data-a="auth_switch" style="font-size:11px;padding:3px 8px">Log In</button>
+      </div>
+    ` : ''}
+
+    <div class="row sp" style="margin-bottom:8px">
+      <div>
+        <h1>${g}, ${userFirst}</h1>
+        <div class="sub">CalmSignal Stress Monitor</div>
+      </div>
+      <button class="chip" data-a="sensor_modal" title="Manage Sensor Connection">
+        <span class="pulse-dot ${P.connected ? '' : 'orange'}"></span>
+        <span style="max-width:115px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.srcLabel.split(' ')[0])}</span>
+      </button>
+    </div>
+
+    <!-- Main Stress Score Card -->
+    <div class="card" style="margin-top:6px;border-left:6px solid ${STC[st]}">
+      <div class="row sp">
+        <h2 style="color:${STC[st]}" data-v="state">${STN[st]}</h2>
+        <span class="tag">${E.stage}</span>
+      </div>
+      <div class="row sp" style="align-items:baseline">
+        <div class="big"><span data-v="score">${Math.round(E.sc)}</span><span class="u" style="font-size:18px">/100</span></div>
+        <div style="text-align:right">
+          <span class="wesad-badge">WESAD ML</span>
+          <div class="sub" style="font-size:12px;margin-top:2px">${Math.round(E.probStress * 100)}% Stress Likelihood</div>
+        </div>
+      </div>
+
+      <div style="margin-top:8px">
+        <div class="meter-bar">
+          <div class="meter-pin" style="left:${Math.min(98, Math.max(2, E.sc))}%"></div>
+        </div>
+        <div class="gauge-row">
+          <span>Baseline (${getPopNorm('LOW', 'hr')?.toFixed(0)} BPM)</span>
+          <span>WESAD TSST Peak (${getPopNorm('HIGH', 'hr')?.toFixed(0)} BPM)</span>
+        </div>
+      </div>
+
+      <div class="row wrap" style="margin-top:14px">
+        <button class="btn sm" data-a="supp">Support</button>
+        <button class="btn sm sec" data-a="chat">Talk to Companion</button>
+        <button class="btn sm sec" data-a="sensor_modal">Switch Sensor</button>
+      </div>
+    </div>
+
+    <!-- WESAD Cohort Profile Match Card -->
+    <div class="card" style="border:1px solid rgba(39,102,106,0.25);background:linear-gradient(145deg,var(--card),rgba(39,102,106,0.04))">
+      <div class="row sp">
+        <h3>WESAD Cohort Match</h3>
+        <span class="tag gold">${match.similarity}% Similarity</span>
+      </div>
+      <div class="sub" style="margin-top:4px">
+        Your physiological readings align closest with **Subject ${match.subject}** during **${match.condition}** in the WESAD clinical study protocol.
+      </div>
+    </div>
+
+    <!-- Multi-Modal Sensor Grid -->
+    <div class="g2" style="margin-bottom:12px">
+      ${metric('hr', 'Heart Rate', 'BPM')}
+      ${metric('hrv', 'HRV RMSSD', 'ms')}
+      ${metric('eda', 'EDA / GSR', 'μS')}
+      ${metric('st', 'Skin Temp', '°C')}
+      <div class="card" style="margin:0;grid-column:span 2">
+        <div class="row sp">
+          <div>
+            <div class="u">Motion & Activity</div>
+            <div class="m" style="font-size:17px;margin-top:2px">${r.act} · ${r.mv} Intensity</div>
+          </div>
+          <div style="text-align:right">
+            <div class="u">Blood Oxygen</div>
+            <div class="m" style="font-size:17px;margin-top:2px"><span data-v="sp">${r.sp == null ? '—' : r.sp + '%'}</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Diagnostic Insight -->
+    <div class="card">
+      <div class="row sp">
+        <h3>Physiological Context</h3>
+        <span class="tag">Evidence-Based</span>
+      </div>
+      <div class="sub" data-v="insight" style="margin-top:4px">${insight()}</div>
+    </div>
+
+    <!-- Context & Events -->
+    <div class="card">
+      <h3>Context</h3>
+      <div class="row wrap">${CTXS.map(c => `<button class="chip ${S.ctx === c ? 'on' : ''}" data-a="ctx" data-c="${c}">${c}</button>`).join('')}</div>
+    </div>
+
+    <div class="card">
+      <h3>Most Recent Stress Event</h3>
+      ${e ? `<button class="chip" style="width:100%;text-align:left;border-radius:12px" data-a="ev" data-id="${e.id}">${fmt(e.start)} · Peak ${STN[e.peak]} · Score: ${e.peakSc}/100</button>` : '<div class="sub">No stress events recorded yet.</div>'}
+    </div>
+  `;
+        }
+
+        function insight() {
+            const r = E.r, s = E.state;
+            if (['Exercising', 'Walking'].includes(S.ctx) || r.mv !== 'Low') {
+                return 'Your heart rate is higher alongside physical movement. Psychological stress response is suppressed.';
+            }
+            if (s === 'HIGH') {
+                return `Acute sympathetic stress response detected (Score: ${Math.round(E.sc)}). Elevated heart rate (+${(r.hr - bm('hr')).toFixed(0)} BPM) and skin conductance (${r.eda} μS) align with WESAD acute stress patterns.`;
+            }
+            if (s === 'ELEVATED') {
+                return `Signals moving away from baseline pattern (HR ${r.hr} BPM, EDA ${r.eda} μS). Noticeable sympathetic arousal.`;
+            }
+            if (s === 'RECOVERING') {
+                return 'Vitals returning toward baseline norm. HRV RMSSD is rebounding and skin temperature is stabilizing.';
+            }
+            return `Signals are within your usual resting range (HR usual: ${rtxt('hr')} BPM, EDA usual: ${rtxt('eda', 2)} μS).`;
+        }
+
+        function ecgHTML() { return `<canvas id="ecg"></canvas>`; }
+
+        /* --- LIVE MONITOR VIEW --- */
+        function monitor() {
+            const r = E.r, st = P.status();
+            return `
+    <div class="row sp" style="margin-bottom:8px">
+      <h1>Live Monitor</h1>
+      <button class="btn sm sec" data-a="sensor_modal">Hardware Connect</button>
+    </div>
+    <div class="sub" style="margin-bottom:12px">Continuous telemetry stream from ${P.srcLabel}.</div>
+
+    <div class="card" style="border-color:rgba(39,102,106,0.3);background:var(--acc-light)">
+      <div class="row sp">
+        <div class="row">
+          <span class="pulse-dot ${P.connected ? '' : 'orange'}"></span>
+          <div>
+            <b>${esc(P.srcLabel)}</b>
+            <div class="u">${P.packetsCount} packets received · ${P.connected ? 'Active telemetry' : 'Awaiting data'}</div>
+          </div>
+        </div>
+        <button class="btn sm" data-a="sensor_modal">Configure</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Heart & Waveform</h2>
+      <div class="g2" style="margin-bottom:8px">
+        <div><div class="m"><span data-v="hr">${r.hr}</span> <span class="u">BPM</span></div><div class="u">usual ${rtxt('hr')}</div></div>
+        <div><div class="m"><span data-v="hrv">${r.hrv}</span> <span class="u">ms RMSSD</span></div><div class="u">usual ${rtxt('hrv')}</div></div>
+      </div>
+      ${ecgHTML()}
+      <div class="u" style="margin-top:4px">Real-time rhythm synchronization with heart rate</div>
+    </div>
+
+    <div class="card">
+      <div class="row sp">
+        <h2>Electrodermal Activity (GSR)</h2>
+        <span class="tag" style="color:var(--eda)">Sympathetic Arousal</span>
+      </div>
+      <div class="g2" style="margin:8px 0">
+        <div><div class="m" style="color:var(--eda)"><span data-v="eda">${r.eda.toFixed(2)}</span> <span class="u">μS</span></div><div class="u">Skin Conductance</div></div>
+        <div><div class="m">${(r.eda - bm('eda')).toFixed(2)} <span class="u">μS</span></div><div class="u">Baseline Drift</div></div>
+      </div>
+      <div class="bar" style="margin:6px 0"><i style="width:${Math.min(100, Math.round((r.eda / 8.0) * 100))}%;background:var(--eda)"></i></div>
+      <div class="u">Primary physiological marker of stress in the WESAD clinical study</div>
+    </div>
+
+    <div class="card">
+      <h2>Oxygen & Temperature</h2>
+      <div class="g2">
+        <div><div class="m" data-v="sp2">${r.sp == null ? 'Unreliable' : r.sp + '%'}</div><div class="u">Pulse Oximetry (SpO₂)</div></div>
+        <div><div class="m" data-v="st">${r.st}°C</div><div class="u">Wrist Skin Temp</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Device Telemetry</h2>
+      ${st.map(([a, b]) => `
+        <div class="row sp" style="padding:4px 0;border-bottom:1px solid var(--line)">
+          <span>${a}</span>
+          <span class="tag" style="color:${b.includes('lost') ? 'var(--r)' : 'var(--acc)'}">${b}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+        }
+
+        /* --- INSIGHTS VIEW --- */
+        function insights() {
+            const evs = S.events;
+            const n = evs.length;
+            const ND = '<div class="sub">Not enough data recorded yet.</div>';
+
+            return `
+    <h1>Insights & Analytics</h1>
+    <div class="sub" style="margin-bottom:12px">Continuous WESAD-normative clinical comparisons.</div>
+
+    <div class="card">
+      <h2>WESAD Population Norms</h2>
+      <div class="sub" style="margin-bottom:8px">Empirical averages from the 15 WESAD study participants:</div>
+      <div class="row sp" style="padding:4px 0"><span>Calm Baseline HR:</span> <b>${getPopNorm('LOW', 'hr')?.toFixed(1)} ± ${WESAD_POP_DEFAULTS.LOW.hr.std} BPM</b></div>
+      <div class="row sp" style="padding:4px 0"><span>TSST Acute Stress HR:</span> <b>${getPopNorm('HIGH', 'hr')?.toFixed(1)} ± ${WESAD_POP_DEFAULTS.HIGH.hr.std} BPM</b></div>
+      <div class="row sp" style="padding:4px 0"><span>Baseline EDA:</span> <b>${getPopNorm('LOW', 'eda')?.toFixed(2)} μS</b></div>
+      <div class="row sp" style="padding:4px 0"><span>Meditation HRV RMSSD:</span> <b>${getPopNorm('RECOVERING', 'rmssd')?.toFixed(1)} ms</b></div>
+    </div>
+
+    <div class="card">
+      <h2>Stress Timeline</h2>
+      ${n ? [...evs].reverse().slice(0, 6).map(e => `
+        <button class="chip" style="width:100%;text-align:left;border-radius:12px;margin-bottom:6px" data-a="ev" data-id="${e.id}">
+          ${fday(e.start)} ${fmt(e.start)} · ${STN[e.peak]} · Peak Score: ${e.peakSc}/100
+        </button>
+      `).join('') : ND}
+    </div>
+
+    <div class="card">
+      <div class="row sp">
+        <h2>Trigger Journal</h2>
+        <button class="btn sm" data-a="jnew">New entry</button>
+      </div>
+      ${S.journal.length ? [...S.journal].reverse().map(j => `
+        <div style="border-top:1px solid var(--line);padding:8px 0">
+          <b>${esc(j.trig)}</b>
+          <div class="u">${fday(j.t)} ${fmt(j.t)} · HR ${j.hr || '—'}, Score ${j.sc || '—'}</div>
+          <div>${esc(j.text)}</div>
+          <div class="row" style="margin-top:4px">
+            <button class="btn sm sec" data-a="jdel" data-id="${j.id}">Delete</button>
+          </div>
+        </div>
+      `).join('') : '<div class="sub">No journal entries recorded.</div>'}
+    </div>
+  `;
+        }
+
+        /* --- PROFILE & ACCOUNT SETTINGS --- */
+        function profile() {
+            const p = S.profile || {};
+            const isDemo = AUTH.isDemo;
+            const wt = p.wt || 70, ht = p.ht || 175;
+            const bmi = (wt / ((ht / 100) * (ht / 100))).toFixed(1);
+
+            return `
+    <h1>Profile & Settings</h1>
+    
+    <div class="card" style="margin-top:10px">
+      <div class="row sp">
+        <h2>Personal Biometrics</h2>
+        <button class="btn sm sec" data-a="pedit">Edit Profile</button>
+      </div>
+      <div><b>${esc(p.name || 'User Profile')}</b></div>
+      <div class="sub">${esc(p.email || 'No email saved')}</div>
+      <div class="sub" style="margin-top:4px">
+        ${p.age || 26} yrs · ${wt} kg · ${ht} cm · BMI: <b>${bmi}</b>
+      </div>
+      <div class="u" style="margin-top:6px;font-size:11px">
+        BMI is computed for demographic cohort matching and baseline normalization with WESAD subjects; it is not a clinical assessment.
+      </div>
+    </div>
+
+    <!-- Contacts Hub Shortcut -->
+    <div class="card">
+      <div class="row sp">
+        <div>
+          <h2>Contacts & Helplines</h2>
+          <div class="sub">${S.contacts.length} saved contact(s) · Verified emergency helplines</div>
+        </div>
+        <button class="btn sm" data-a="contacts_view">Manage</button>
+      </div>
+    </div>
+
+    <!-- App & Privacy Controls -->
+    <div class="card">
+      <h2>Privacy & Personalization</h2>
+      <label class="row sp" style="font-weight:400;cursor:pointer">
+        <span><b>AI Personalization</b><div class="sub">Allow approved context to tailor responses</div></span>
+        <input type="checkbox" style="width:20px" data-a="tog_set" data-k="ai" ${S.set.ai ? 'checked' : ''}>
+      </label>
+      <label class="row sp" style="font-weight:400;cursor:pointer">
+        <span><b>Chatbot Memory</b><div class="sub">Remember conversation context on this device</div></span>
+        <input type="checkbox" style="width:20px" data-a="tog_set" data-k="chatMemory" ${S.set.chatMemory ? 'checked' : ''}>
+      </label>
+      <label class="row sp" style="font-weight:400;cursor:pointer">
+        <span><b>Haptic Vibration</b><div class="sub">Vibrate phone on breathing cycles (supported devices)</div></span>
+        <input type="checkbox" style="width:20px" data-a="tog_set" data-k="haptic" ${S.set.haptic ? 'checked' : ''}>
+      </label>
+    </div>
+
+    <!-- Account Actions -->
+    <div class="card">
+      <h2>Account Actions</h2>
+      <div class="sub" style="margin-bottom:10px">
+        Account Type: <b>${isDemo ? 'Demo Mode (Simulated)' : 'Authenticated User Account'}</b>
+      </div>
+      <div class="row wrap">
+        <button class="btn sm sec" data-a="export_data">Export Health Data</button>
+        <button class="btn sm sec" data-a="clear_chat">Clear Chat History</button>
+        <button class="btn sm sec" data-a="rbase">Reset Baseline</button>
+        <button class="btn sm red" data-a="logout_act">Log Out</button>
+      </div>
+    </div>
+  `;
+        }
+
+        /* ==========================================================================
+           ENHANCED CONTACTS MANAGEMENT (EMERGENCY & FAMILY/PERSONAL)
+           ========================================================================== */
+        let contactsTab = 'emergency'; // 'emergency' | 'personal'
+
+        function contactsViewHTML() {
+            const emContacts = S.contacts.filter(c => c.cat === 'emergency' || c.pri);
+            const personalContacts = S.contacts.filter(c => c.cat !== 'emergency' && !c.pri);
+            const activeList = contactsTab === 'emergency' ? emContacts : personalContacts;
+
+            return `
+    <div class="hd">
+      <h1 style="font-size:22px">Trusted Contacts & Helplines</h1>
+      <button class="btn sm sec" data-a="back">Close</button>
+    </div>
+
+    <!-- Verified Clinical Helplines -->
+    <div class="card" style="border-left:4px solid var(--r)">
+      <div class="row sp">
+        <h3>Emergency & Support Helplines</h3>
+        <span class="tag red">24/7 Support</span>
+      </div>
+      <div class="sub" style="margin:4px 0 10px">Free, confidential mental health and emergency lines:</div>
+      ${HELP.map(h => `
+        <div class="row sp" style="padding:6px 0;border-bottom:1px solid var(--line)">
+          <div>
+            <b>${esc(h.n)}</b>
+            <div class="u">${esc(h.d)} · <b>${esc(h.num)}</b></div>
+          </div>
+          <a class="btn sm red" href="tel:${esc(h.num)}">Call</a>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- Category Tabs & Add Button -->
+    <div class="row sp" style="margin:16px 0 10px">
+      <div class="row">
+        <button class="chip ${contactsTab === 'emergency' ? 'on' : ''}" data-a="tab_contacts" data-tab="emergency">
+          Emergency Contacts (${emContacts.length})
+        </button>
+        <button class="chip ${contactsTab === 'personal' ? 'on' : ''}" data-a="tab_contacts" data-tab="personal">
+          Family & Friends (${personalContacts.length})
+        </button>
+      </div>
+      <button class="btn sm" data-a="add_contact">+ Add</button>
+    </div>
+
+    <!-- Contacts Cards List -->
+    ${activeList.length ? activeList.map(c => `
+      <div class="card" style="margin-bottom:10px">
+        <div class="row sp">
+          <div>
+            <b>${esc(c.name)}</b>
+            <span class="tag" style="margin-left:6px">${esc(c.rel || 'Contact')}</span>
+            ${c.pri ? '<span class="tag gold" style="margin-left:4px">★ Primary</span>' : ''}
+          </div>
+          <span class="tag">${c.cat === 'emergency' ? 'Emergency' : 'Personal'}</span>
+        </div>
+        <div class="sub" style="margin:4px 0">${esc(c.ph)} ${c.email ? '· ' + esc(c.email) : ''}</div>
+        ${c.notes ? `<div class="u" style="font-style:italic">Note: ${esc(c.notes)}</div>` : ''}
+
+        <div class="row wrap" style="margin-top:10px">
+          <a class="btn sm" href="tel:${esc(c.ph.replace(/[^+\d]/g, ''))}">Call</a>
+          ${c.email ? `<a class="btn sm sec" href="mailto:${esc(c.email)}">Email</a>` : ''}
+          <button class="btn sm sec" data-a="draft_msg" data-id="${c.id}">Draft Message</button>
+          <button class="btn sm sec" data-a="edit_contact" data-id="${c.id}">Edit</button>
+          <button class="btn sm sec" data-a="toggle_pri" data-id="${c.id}">${c.pri ? 'Unmark Primary' : 'Make Primary'}</button>
+          <button class="btn sm sec" style="color:var(--r)" data-a="del_contact" data-id="${c.id}">Delete</button>
+        </div>
+      </div>
+    `).join('') : `
+      <div class="card" style="text-align:center;padding:24px 10px">
+        <div class="sub">No ${contactsTab === 'emergency' ? 'emergency contacts' : 'family members'} saved yet.</div>
+        <button class="btn sm sec" data-a="add_contact" style="margin-top:10px">+ Add ${contactsTab === 'emergency' ? 'Emergency Contact' : 'Family Member'}</button>
+      </div>
+    `}
+
+    <div class="u" style="margin-top:12px;font-size:11.5px">
+      Privacy Promise: CalmSignal never automatically calls or sends messages without your explicit tap.
+    </div>
+  `;
+        }
+
+        function contactFormHTML(contactId = null) {
+            const c = contactId ? S.contacts.find(x => x.id === contactId) : null;
+            const isEdit = !!c;
+
+            return `
+    ${back(isEdit ? 'Edit Contact' : 'Add Contact')}
+    <div class="card">
+      <label>Full Name</label>
+      <input id="c_name" value="${esc(c?.name || '')}" placeholder="e.g. Priya Sharma">
+      <div class="err" id="c_err_name"></div>
+
+      <label>Relationship</label>
+      <select id="c_rel">
+        ${['Mother', 'Father', 'Sister', 'Brother', 'Spouse', 'Partner', 'Friend', 'Doctor / Therapist', 'Relative', 'Other'].map(r => `
+          <option ${c && c.rel === r ? 'selected' : ''}>${r}</option>
+        `).join('')}
+      </select>
+
+      <label>Phone Number (with country code)</label>
+      <input id="c_ph" value="${esc(c?.ph || '')}" placeholder="+91 98765 43210" inputmode="tel">
+      <div class="err" id="c_err_ph"></div>
+
+      <label>Email Address (optional)</label>
+      <input id="c_email" value="${esc(c?.email || '')}" placeholder="priya@example.com" inputmode="email">
+
+      <label>Category</label>
+      <div class="row" style="margin:6px 0 10px">
+        <label class="row" style="margin:0;cursor:pointer">
+          <input type="radio" name="c_cat" value="emergency" style="width:18px" ${!c || c.cat === 'emergency' ? 'checked' : ''}>
+          <span><b>Emergency Contact</b> (High-stress check-in)</span>
+        </label>
+      </div>
+      <div class="row" style="margin:0 0 14px">
+        <label class="row" style="margin:0;cursor:pointer">
+          <input type="radio" name="c_cat" value="personal" style="width:18px" ${c && c.cat === 'personal' ? 'checked' : ''}>
+          <span><b>Family / Personal</b> (Trusted circle)</span>
+        </label>
+      </div>
+
+      <label class="row" style="font-weight:400;margin-bottom:12px;cursor:pointer">
+        <input type="checkbox" id="c_pri" style="width:18px" ${c?.pri ? 'checked' : ''}>
+        <span>Mark as Primary Emergency Contact</span>
+      </label>
+
+      <label>Personal Notes (optional)</label>
+      <textarea id="c_notes" rows="2" placeholder="e.g. Knows my anxiety triggers; lives nearby">${esc(c?.notes || '')}</textarea>
+
+      <button class="btn full" data-a="save_contact" data-id="${contactId || ''}" style="margin-top:14px">
+        ${isEdit ? 'Save Changes' : 'Add Contact'}
+      </button>
+    </div>
+  `;
+        }
+
+        function draftMessageModalHTML(contactId) {
+            const c = S.contacts.find(x => x.id === contactId);
+            if (!c) return '';
+            const myName = S.profile?.name ? S.profile.name.split(' ')[0] : 'me';
+            const preText = `Hi ${c.name}, I am experiencing a stressful moment right now and could really use a few minutes to talk or check in. - ${myName}`;
+
+            return `
+    ${back('Draft Support Message')}
+    <div class="card">
+      <h3>Reach Out to ${esc(c.name)}</h3>
+      <div class="sub" style="margin-bottom:10px">Review or edit this message before sending. Nothing is sent automatically.</div>
+      
+      <label>Message Content</label>
+      <textarea id="draft_text" rows="4">${esc(preText)}</textarea>
+
+      <div class="row wrap" style="margin-top:14px">
+        <a class="btn full" href="sms:${esc(c.ph)}?&body=${encodeURIComponent(preText)}" target="_blank">
+          Send via SMS / Messaging App
+        </a>
+        <a class="btn sec full" href="tel:${esc(c.ph.replace(/[^+\d]/g, ''))}">
+          Call ${esc(c.name)} Instead
+        </a>
+      </div>
+    </div>
+  `;
+        }
+
+        /* ==========================================================================
+           AI MENTAL HEALTH SUPPORT COMPANION (CHATBOT VIEW)
+           ========================================================================== */
+        function chatViewHTML() {
+            const history = S.chatHistory || [];
+
+            return `
+    <div class="hd">
+      <div class="row">
+        <h1 style="font-size:21px">Mental Health Companion</h1>
+        <span class="wesad-badge">Evidence-Based</span>
+      </div>
+      <button class="btn sm sec" data-a="back">Close</button>
+    </div>
+    
+    <div class="sub" style="margin-bottom:8px">
+      Psychologically informed, empathetic companion grounded in NICE & WHO clinical frameworks.
+    </div>
+
+    <!-- Messages Container -->
+    <div id="msgs" style="min-height:260px;max-height:48vh;overflow-y:auto;padding-right:4px;margin-bottom:10px">
+      ${history.length ? history.map(m => `
+        <div class="msg ${m.r}">
+          ${esc(m.t).replace(/\n/g, '<br>')}
+          ${m.evRef ? `
+            <div>
+              <span class="evidence-pill" data-a="view_evidence" data-id="${esc(m.evRef)}">
+                📚 ${getEvidenceTitle(m.evRef)}
+              </span>
+            </div>
+          ` : ''}
+        </div>
+      `).join('') : `
+        <div class="msg bot">
+          Hello ${esc(S.profile?.name?.split(' ')[0] || '')}. I am your CalmSignal support companion. I am here to listen with empathy, help you navigate stressful emotions, and offer evidence-based guidance whenever you need it. How are you feeling right now?
+        </div>
+      `}
+    </div>
+
+    <!-- Adaptive Suggestion Chips -->
+    <div class="row wrap" style="margin-bottom:10px">
+      <button class="chip" data-a="cq" data-q="I am feeling overwhelmed by college and exams">Exams & Overwhelm</button>
+      <button class="chip" data-a="cq" data-q="I am having an anxiety attack">Anxiety Attack</button>
+      <button class="chip" data-a="cq" data-q="Help me ground myself with 5-4-3-2-1">5-4-3-2-1 Grounding</button>
+      <button class="chip" data-a="cq" data-q="Does my heart rate prove I'm anxious?">Explain My Sensors</button>
+      <button class="chip" data-a="cq" data-q="I feel like a failure today">Self-Criticism</button>
+    </div>
+
+    <!-- Input Bar -->
+    <div class="row">
+      <input id="ci" placeholder="What is on your mind?..." onkeydown="if(event.key==='Enter')$('#csend').click()">
+      <button class="btn" id="csend" data-a="csend">Send</button>
+    </div>
+
+    <div class="row sp" style="margin-top:8px">
+      <button class="chip" data-a="new_chat" style="font-size:11px">New Conversation</button>
+      <span class="u" style="font-size:10.5px">Support tool · Not a substitute for clinical care</span>
+    </div>
+  `;
+        }
+
+        function getEvidenceTitle(id) {
+            const item = EVIDENCE.find(x => x.id === id);
+            if (!item) return 'Clinical Evidence';
+            return item.evidence_type.split('(')[0].trim();
+        }
+
+        function evidenceDrawerHTML(evidenceId) {
+            const item = EVIDENCE.find(x => x.id === evidenceId);
+            if (!item) return back('Evidence');
+
+            return `
+    ${back('Evidence Source Details')}
+    <div class="card" style="border-left:4px solid var(--acc)">
+      <div class="row sp">
+        <span class="tag" style="background:var(--acc-light);color:var(--acc)">${esc(item.evidence_type)}</span>
+        <span class="sub">${item.year}</span>
+      </div>
+      <h2 style="margin:8px 0 4px;font-size:17px">${esc(item.title)}</h2>
+      <div class="sub"><b>Organization / Authors:</b> ${esc(item.org_or_authors)}</div>
+      <div style="margin:12px 0;line-height:1.5">${esc(item.summary)}</div>
+      
+      ${item.clinical_quote ? `
+        <div style="background:var(--bg);border-left:3px solid var(--acc);padding:8px 12px;border-radius:6px;font-style:italic;font-size:13px;margin:10px 0">
+          "${esc(item.clinical_quote)}"
+        </div>
+      ` : ''}
+
+      ${item.url ? `
+        <a class="btn sm full" href="${esc(item.url)}" target="_blank" rel="noopener">
+          View Official Publication
+        </a>
+      ` : ''}
+    </div>
+  `;
+        }
+
+        /* ==========================================================================
+           WESAD REPLAY & SENSOR MODAL
+           ========================================================================== */
+        function sensorModalHTML() {
+            const allSubjs = ['S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S13', 'S14', 'S15', 'S16', 'S17'];
+            const subjs = WESAD?.replay_streams ? Object.keys(WESAD.replay_streams) : allSubjs;
+            const curSubj = P.wesadSubj;
+            const demo = WESAD?.subject_demographics?.[curSubj] || { age: 27, gender: 'male', weight: 80, height: 175 };
+
+            return `
+    <div class="hd">
+      <h1 style="font-size:22px">Hardware & Sensor Ingestion</h1>
+      <button class="btn sm sec" data-a="back">Close</button>
+    </div>
+
+    <div class="card">
+      <div class="row sp">
+        <div>
+          <b>Current Sensor Source</b>
+          <div class="sub">${P.srcLabel}</div>
+        </div>
+        <span class="tag ${P.connected ? 'green' : ''}">${P.connected ? 'Active' : 'Standby'}</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>1. Live Hardware (ESP32 / Wearable)</h3>
+      <div class="sub" style="margin-bottom:10px">Connect physical hardware via Bluetooth, USB cable, or WiFi:</div>
+      <div class="row wrap">
+        <button class="btn sm" data-a="connect_ble">Connect Bluetooth (BLE)</button>
+        <button class="btn sm sec" data-a="connect_serial">Connect USB Serial</button>
+        <button class="btn sm sec" data-a="connect_sse">Connect WiFi Server</button>
+      </div>
+    </div>
+
+    <div class="card" style="border:1.5px solid var(--acc)">
+      <div class="row sp">
+        <h3>2. WESAD Clinical Dataset Replay</h3>
+        <span class="wesad-badge">15 Subjects Integrated</span>
+      </div>
+      <div class="sub" style="margin:4px 0 10px">Replay empirical clinical data from all 15 WESAD subjects:</div>
+
+      <label>Select Subject</label>
+      <div class="row wrap">
+        ${subjs.map(s => `<button class="chip ${P.wesadSubj === s ? 'on' : ''}" data-a="pick_subj" data-s="${s}">${s}</button>`).join('')}
+      </div>
+      <div class="sub" style="margin:6px 0">Subject ${curSubj}: ${demo.gender}, Age ${demo.age}, Height ${demo.height} cm, Weight ${demo.weight} kg</div>
+
+      <label>Select Study Protocol Condition</label>
+      <div class="row wrap" style="margin-top:4px">
+        <button class="chip ${P.wesadScn === 'normal' ? 'on' : ''}" data-a="pick_scn" data-scn="normal">Baseline Calm (Resting)</button>
+        <button class="chip ${P.wesadScn === 'high' ? 'on' : ''}" data-a="pick_scn" data-scn="high">TSST Stress (Math & Speech)</button>
+        <button class="chip ${P.wesadScn === 'recovery' ? 'on' : ''}" data-a="pick_scn" data-scn="recovery">Meditation (Recovery)</button>
+        <button class="chip ${P.wesadScn === 'elevated' ? 'on' : ''}" data-a="pick_scn" data-scn="elevated">Amusement (Video Clips)</button>
+      </div>
+    </div>
+  `;
+        }
+
+        function forgotPasswordModalHTML() {
+            return `
+    ${back('Reset Password')}
+    <div class="card">
+      <div class="sub" style="margin-bottom:12px">Enter your account email to set a new password.</div>
+      <label>Registered Email</label>
+      <input id="fp_email" type="email" placeholder="name@example.com">
+      <div class="err" id="fp_err_email"></div>
+      
+      <label>New Password (min 6 characters)</label>
+      <input id="fp_pwd" type="password" placeholder="••••••••">
+      <div class="err" id="fp_err_pwd"></div>
+
+      <button class="btn full" data-a="submit_reset_pwd" style="margin-top:12px">Update Password</button>
+    </div>
+  `;
+        }
+
+        function profileEditModalHTML() {
+            const p = S.profile || {};
+            return `
+    ${back('Edit Personal Details')}
+    <div class="card">
+      <label>Full Name</label>
+      <input id="pe_name" value="${esc(p.name || '')}">
+      <div class="err" id="pe_err_name"></div>
+
+      <label>Age (years)</label>
+      <input id="pe_age" type="number" value="${p.age || 26}">
+      <div class="err" id="pe_err_age"></div>
+
+      <label>Body Weight (kg)</label>
+      <input id="pe_wt" type="number" step="0.5" value="${p.wt || 70}">
+      <div class="err" id="pe_err_wt"></div>
+
+      <label>Height (cm)</label>
+      <input id="pe_ht" type="number" step="0.5" value="${p.ht || 175}">
+      <div class="err" id="pe_err_ht"></div>
+
+      <button class="btn full" data-a="submit_pe" style="margin-top:14px">Save Changes</button>
+    </div>
+  `;
+        }
+
+        /* ==========================================================================
+           MODALS ROUTER (OVERLAYS)
+           ========================================================================== */
+        const back = t => `<div class="hd"><h1 style="font-size:22px">${t}</h1><button class="btn sm sec" data-a="back">Close</button></div>`;
+
+        function view(o) {
+            switch (o.k) {
+                case 'support': return supportV();
+                case 'chat': return chatViewHTML();
+                case 'sensor_modal': return sensorModalHTML();
+                case 'contacts': return contactsViewHTML();
+                case 'contact_form': return contactFormHTML(o.id);
+                case 'draft_msg': return draftMessageModalHTML(o.id);
+                case 'forgot_pwd': return forgotPasswordModalHTML();
+                case 'pedit': return profileEditModalHTML();
+                case 'evidence': return evidenceDrawerHTML(o.id);
+                case 'jform': {
+                    return `
+        ${back('New Journal Entry')}
+        <div class="card">
+          <label>What was happening?</label>
+          <div class="row wrap" id="tr">${TRIG.map(t => `<button class="chip" data-a="jt" data-t="${t}">${t}</button>`).join('')}</div>
+          <label>Notes (optional)</label>
+          <textarea id="jx" rows="3" placeholder="What felt challenging today?"></textarea>
+          <div class="err" id="je"></div>
+          <button class="btn full" data-a="jsave" style="margin-top:10px">Save Entry</button>
+        </div>
+      `;
+                }
+            }
+        }
+
+        function supportV() {
+            const m = SUP.mode;
+            if (m === 'choose') return `
+    ${back('Support & Coping Resets')}
+    <div class="card">
+      <h3>Level 1 · Guided Breathing</h3>
+      <div class="sub">4s inhale, 4s hold, 6s exhale, 2s rest (autonomic down-regulation).</div>
+      <button class="btn sm" data-a="sb" style="margin-top:8px">Start Breathing</button>
+    </div>
+    <div class="card">
+      <h3>Level 2 · 5-4-3-2-1 Sensory Grounding</h3>
+      <div class="sub">Anchor attention into physical space to interrupt panic rumination.</div>
+      <button class="btn sm sec" data-a="sg" style="margin-top:8px">Start Grounding</button>
+    </div>
+  `;
+            if (m === 'breath') return `
+    <div style="text-align:center;padding:10px 0">
+      <h1>SILENT SUPPORT</h1>
+      <div class="sub">Paced physiological reset</div>
+      <div class="circle" id="circ"></div>
+      <h2 id="pl">Get ready</h2>
+      <div class="sub" id="tl"></div>
+      <div class="row" style="justify-content:center;margin-top:16px">
+        <button class="btn sec" id="pb" data-a="pause">Pause</button>
+        <button class="btn" data-a="sfin">End Session</button>
+      </div>
+    </div>
+  `;
+            if (m === 'check') return `
+    ${back('Session Check-In')}
+    <div class="card">
+      <h3>How are you feeling right now?</h3>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+        ${['Much better', 'A little better', 'About the same', 'Still anxious', 'Worse'].map(f => `
+          <button class="btn sec full" data-a="rate" data-f="${f}">${f}</button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+            return `
+    ${back('Session Complete')}
+    <div class="card">
+      <div class="sub">Thank you for taking a moment for yourself. You noted feeling: <b>${esc(SUP.fb)}</b>.</div>
+      <button class="btn sm" data-a="sclose" style="margin-top:12px">Return to Dashboard</button>
+    </div>
+  `;
+        }
+
+        /* ==========================================================================
+           RENDER & ROUTER ENGINE
+           ========================================================================== */
+        function render() {
+            const m = $('#main');
+            if (!m) return;
+            try {
+                // Check if authenticated or in demo mode
+                if (!AUTH.user && !AUTH.isDemo) {
+                    m.innerHTML = authScreen();
+                    $('#nav')?.remove();
+                    return;
+                }
+
+                const sc = m.scrollTop;
+                const viewFn = { home, monitor, insights, profile }[TAB];
+                m.innerHTML = viewFn ? viewFn() : home();
+                m.scrollTop = sc;
+
+                $('#nav')?.remove();
+                const n = document.createElement('nav');
+                n.id = 'nav';
+                n.innerHTML = ['home', 'monitor', 'insights', 'profile'].map(t => `
+      <button class="${TAB === t ? 'on' : ''}" data-a="tab" data-t="${t}">
+        ${t[0].toUpperCase() + t.slice(1)}
+      </button>
+    `).join('');
+                $('#app').insertBefore(n, $('#ov'));
+
+                if (TAB === 'monitor') ecgStart();
+            } catch (err) {
+                console.error("Render error:", err);
+                m.innerHTML = `
+      <div class="card" style="margin:24px 8px;text-align:center;padding:24px">
+        <h2 style="color:var(--r)">Temporary Interface Glitch</h2>
+        <div class="sub" style="margin:10px 0 16px">${esc(err.message)}</div>
+        <button class="btn sm" onclick="localStorage.removeItem('calmsignal_auth_session');location.reload()">Reset Session & Refresh</button>
+      </div>
+    `;
+            }
+        }
+
+        function ov() {
+            const o = $('#ov'), t = OV[OV.length - 1];
+            o.innerHTML = t ? view(t) : '';
+            o.scrollTop = 0;
+        }
+
+        const push = o => { OV.push(o); ov(); };
+
+        function live() {
+            document.querySelectorAll('[data-v]').forEach(e => {
+                const k = e.dataset.v, r = E.r;
+                if (k === 'score') e.textContent = Math.round(E.sc);
+                else if (k === 'state') e.textContent = STN[E.state];
+                else if (k === 'insight') e.textContent = insight();
+                else if (k === 'sp2') e.textContent = r.sp == null ? 'Unreliable' : r.sp + '%';
+                else if (k === 'st' && e.classList.contains('m')) e.textContent = r.st + '°C';
+                else if (k === 'eda') e.textContent = r.eda.toFixed(2);
+                else e.textContent = val(k);
+            });
+        }
+
+        // Main 1-second interval loop
+        setInterval(() => {
+            const r = P.tick();
+            E.step(r);
+            if (r.mv === 'Low' && E.state === 'LOW' && !['Exercising', 'Walking'].includes(S.ctx)) {
+                ['hr', 'hrv', 'eda', 'st'].forEach(k => upd(k, r[k]));
+                if (r.sp != null) upd('sp', r.sp);
+            }
+            if (AUTH.user || AUTH.isDemo) {
+                live();
+            }
+        }, 1000);
+
+        /* Real-time ECG Canvas */
+        let ecgOn = false, buf = [], ph = 0, lt = 0;
+        const g_ecg = (x, c, w, a) => a * Math.exp(-((x - c) ** 2) / (2 * w * w));
+        function ecgStart() {
+            if (ecgOn) return;
+            ecgOn = true; lt = performance.now();
+            requestAnimationFrame(ecgLoop);
+        }
+        function ecgLoop(t) {
+            const c = $('#ecg');
+            if (!c) { ecgOn = false; return; }
+            const dt = (t - lt) / 1000; lt = t;
+            ph += dt * E.r.hr / 60;
+            const n = Math.max(1, Math.round(dt * 120));
+            for (let i = 0; i < n; i++) {
+                const x = (ph + i * 0) % 1;
+                buf.push(
+                    g_ecg(x, .15, .025, .12) - g_ecg(x, .27, .008, .12) +
+                    g_ecg(x, .3, .01, 1.0) - g_ecg(x, .33, .01, .2) +
+                    g_ecg(x, .55, .04, .25) + (Math.random() - .5) * .02
+                );
+            }
+            while (buf.length > 300) buf.shift();
+            const w = c.width = c.clientWidth, h = c.height = c.clientHeight, x = c.getContext('2d');
+            x.strokeStyle = '#2E8B62'; x.lineWidth = 1.8; x.beginPath();
+            buf.forEach((v, i) => {
+                const px = i * w / 300, py = h * .8 - v * h * .65;
+                i ? x.lineTo(px, py) : x.moveTo(px, py);
+            });
+            x.stroke();
+            requestAnimationFrame(ecgLoop);
+        }
+
+        /* ==========================================================================
+           EVENT HANDLERS & ACTIONS
+           ========================================================================== */
+        const gv = id => $('#' + id)?.value ?? '';
+
+        const A = {
+            tab(d) { TAB = d.t; render(); $('#main').scrollTop = 0; },
+            ctx(d) { S.ctx = d.c; save(); render(); },
+            auth_tab(d) { authTab = d.tab; render(); },
+            auth_switch() { AUTH = { user: null, token: null, isDemo: false }; localStorage.removeItem(AUTH_KEY); render(); },
+            toggle_pwd() { pwdVisible = !pwdVisible; render(); },
+
+            async submit_login() {
+                const email = gv('l_email').trim().toLowerCase();
+                const pwd = gv('l_pwd');
+                $('#l_err_email').textContent = '';
+                $('#l_err_pwd').textContent = '';
+
+                if (!email) { $('#l_err_email').textContent = 'Please enter your email.'; return; }
+                if (!pwd) { $('#l_err_pwd').textContent = 'Please enter your password.'; return; }
+
+                const btn = $('#btn_login');
+                if (btn) { btn.textContent = 'Logging in...'; btn.disabled = true; }
+
+                // Try server authentication first
+                try {
+                    const res = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password: pwd })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.user) {
+                        AUTH = { user: data.user, token: data.token, isDemo: false };
+                        if ($('#l_rem')?.checked) localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH));
+                        loadActiveStore();
+                        render();
+                        return;
+                    } else if (!res.ok && res.status === 401) {
+                        $('#l_err_pwd').textContent = data.error || 'Invalid email or password.';
+                        if (btn) { btn.textContent = 'Log In'; btn.disabled = false; }
+                        return;
+                    }
+                } catch (e) { }
+
+                // Fallback: Local offline authentic hashing
+                const localUsers = JSON.parse(localStorage.getItem('calmsignal_local_users') || '{}');
+                const u = localUsers[email];
+                if (u) {
+                    const h = await sha256(pwd + u.salt);
+                    if (h === u.pwd_hash) {
+                        AUTH = { user: { id: u.id, name: u.name, email: u.email, age: u.age, weight: u.weight, height: u.height }, token: 'tok_local_' + uid(), isDemo: false };
+                        if ($('#l_rem')?.checked) localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH));
+                        loadActiveStore();
+                        render();
+                        return;
+                    }
+                }
+                $('#l_err_pwd').textContent = 'Invalid email or password.';
+                if (btn) { btn.textContent = 'Log In'; btn.disabled = false; }
+            },
+
+            async submit_register() {
+                const name = gv('r_name').trim();
+                const email = gv('r_email').trim().toLowerCase();
+                const age = +gv('r_age');
+                const wt = +gv('r_wt').replace(',', '.');
+                const ht = +gv('r_ht').replace(',', '.');
+                const pwd = gv('r_pwd');
+                const pwd2 = gv('r_pwd2');
+
+                ['r_err_name', 'r_err_email', 'r_err_age', 'r_err_wt', 'r_err_ht', 'r_err_pwd', 'r_err_pwd2'].forEach(id => {
+                    const el = $('#' + id); if (el) el.textContent = '';
+                });
+
+                let hasErr = false;
+                if (name.length < 2) { $('#r_err_name').textContent = 'Please enter your full name (at least 2 letters).'; hasErr = true; }
+                if (!email || !email.includes('@') || !email.includes('.')) { $('#r_err_email').textContent = 'Please enter a valid email address.'; hasErr = true; }
+                if (!age || age < 5 || age > 120) { $('#r_err_age').textContent = 'Age (5-120).'; hasErr = true; }
+                if (!wt || wt < 20 || wt > 300) { $('#r_err_wt').textContent = 'Weight (20-300 kg).'; hasErr = true; }
+                if (!ht || ht < 50 || ht > 250) { $('#r_err_ht').textContent = 'Height (50-250 cm).'; hasErr = true; }
+                if (pwd.length < 6) { $('#r_err_pwd').textContent = 'Password must be at least 6 characters.'; hasErr = true; }
+                if (pwd !== pwd2) { $('#r_err_pwd2').textContent = 'Passwords do not match.'; hasErr = true; }
+                if (hasErr) return;
+
+                const btn = $('#btn_register');
+                if (btn) { btn.textContent = 'Creating account...'; btn.disabled = true; }
+
+                // Try server registration
+                try {
+                    const res = await fetch('/api/auth/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, email, age, weight: wt, height: ht, password: pwd })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.user) {
+                        AUTH = { user: data.user, token: data.token, isDemo: false };
+                        localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH));
+                        loadActiveStore();
+                        render();
+                        return;
+                    } else if (!res.ok) {
+                        $('#r_err_email').textContent = data.error || 'Registration failed.';
+                        if (btn) { btn.textContent = 'Create Account & Start'; btn.disabled = false; }
+                        return;
+                    }
+                } catch (e) { }
+
+                // Fallback: Local offline registration with authentic salted hashing
+                const localUsers = JSON.parse(localStorage.getItem('calmsignal_local_users') || '{}');
+                if (localUsers[email]) {
+                    $('#r_err_email').textContent = 'An account with this email already exists.';
+                    if (btn) { btn.textContent = 'Create Account & Start'; btn.disabled = false; }
+                    return;
+                }
+                const salt = uid();
+                const pwd_hash = await sha256(pwd + salt);
+                const userId = 'usr_' + uid();
+                localUsers[email] = { id: userId, name, email, age, weight: wt, height: ht, pwd_hash, salt };
+                localStorage.setItem('calmsignal_local_users', JSON.stringify(localUsers));
+
+                AUTH = { user: { id: userId, name, email, age, weight: wt, height: ht }, token: 'tok_local_' + uid(), isDemo: false };
+                localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH));
+                loadActiveStore();
+                render();
+            },
+
+            demo_mode() {
+                AUTH = { user: null, token: null, isDemo: true };
+                localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH));
+                loadActiveStore();
+                render();
+            },
+
+            logout_act() {
+                if (confirm('Log out of CalmSignal?')) {
+                    if (AUTH.token && !AUTH.isDemo) {
+                        fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${AUTH.token}` } }).catch(() => { });
+                    }
+                    AUTH = { user: null, token: null, isDemo: false };
+                    localStorage.removeItem(AUTH_KEY);
+                    render();
+                }
+            },
+
+            forgot_pwd() { push({ k: 'forgot_pwd' }); },
+
+            async submit_reset_pwd() {
+                const email = gv('fp_email').trim().toLowerCase();
+                const pwd = gv('fp_pwd');
+                $('#fp_err_email').textContent = '';
+                $('#fp_err_pwd').textContent = '';
+                if (!email) { $('#fp_err_email').textContent = 'Please enter your email.'; return; }
+                if (pwd.length < 6) { $('#fp_err_pwd').textContent = 'Password must be at least 6 characters.'; return; }
+
+                try {
+                    const res = await fetch('/api/auth/forgot-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, new_password: pwd })
+                    });
+                    const data = await res.json();
+                    alert(data.message || 'Password update processed.');
+                    OV.pop(); ov(); render();
+                    return;
+                } catch (e) { }
+
+                // Fallback local reset
+                const localUsers = JSON.parse(localStorage.getItem('calmsignal_local_users') || '{}');
+                if (localUsers[email]) {
+                    const salt = uid();
+                    localUsers[email].salt = salt;
+                    localUsers[email].pwd_hash = await sha256(pwd + salt);
+                    localStorage.setItem('calmsignal_local_users', JSON.stringify(localUsers));
+                    alert('Password updated. You can now log in.');
+                    OV.pop(); ov(); render();
+                } else {
+                    alert('If an account exists with this email, the password has been reset.');
+                    OV.pop(); ov(); render();
+                }
+            },
+
+            pedit() { push({ k: 'pedit' }); },
+
+            async submit_pe() {
+                const name = gv('pe_name').trim();
+                const age = +gv('pe_age');
+                const wt = +gv('pe_wt').replace(',', '.');
+                const ht = +gv('pe_ht').replace(',', '.');
+
+                if (name.length < 2) { $('#pe_err_name').textContent = 'Enter a valid name.'; return; }
+                if (!age || age < 5 || age > 120) { $('#pe_err_age').textContent = 'Enter a valid age.'; return; }
+                if (!wt || wt < 20 || wt > 300) { $('#pe_err_wt').textContent = 'Enter weight (20-300).'; return; }
+                if (!ht || ht < 50 || ht > 250) { $('#pe_err_ht').textContent = 'Enter height (50-250).'; return; }
+
+                S.profile = S.profile || {};
+                S.profile.name = name;
+                S.profile.age = age;
+                S.profile.wt = wt;
+                S.profile.ht = ht;
+                if (AUTH.user) {
+                    AUTH.user.name = name;
+                    AUTH.user.age = age;
+                    AUTH.user.weight = wt;
+                    AUTH.user.height = ht;
+                    localStorage.setItem(AUTH_KEY, JSON.stringify(AUTH));
+                }
+                save();
+                OV.pop(); ov(); render();
+            },
+
+            /* Contacts Management Actions */
+            contacts_view() { push({ k: 'contacts' }); },
+            tab_contacts(d) { contactsTab = d.tab; ov(); },
+            add_contact() { push({ k: 'contact_form' }); },
+            edit_contact(d) { push({ k: 'contact_form', id: d.id }); },
+            draft_msg(d) { push({ k: 'draft_msg', id: d.id }); },
+
+            toggle_pri(d) {
+                const c = S.contacts.find(x => x.id === d.id);
+                if (c) {
+                    c.pri = c.pri ? 0 : 1;
+                    save(); ov();
+                }
+            },
+
+            del_contact(d) {
+                if (confirm('Delete this contact?')) {
+                    S.contacts = S.contacts.filter(x => x.id !== d.id);
+                    save(); ov();
+                }
+            },
+
+            save_contact(d) {
+                const name = gv('c_name').trim();
+                const ph = gv('c_ph').trim();
+                const email = gv('c_email').trim();
+                const rel = gv('c_rel');
+                const notes = gv('c_notes').trim();
+                const cat = document.querySelector('input[name="c_cat"]:checked')?.value || 'emergency';
+                const pri = $('#c_pri')?.checked ? 1 : 0;
+
+                $('#c_err_name').textContent = '';
+                $('#c_err_ph').textContent = '';
+
+                if (name.length < 2) { $('#c_err_name').textContent = 'Please enter a name.'; return; }
+                if (ph.replace(/\D/g, '').length < 7) { $('#c_err_ph').textContent = 'Please enter a valid phone number (at least 7 digits).'; return; }
+
+                const ex = d.id ? S.contacts.find(x => x.id === d.id) : null;
+                const payload = { name, rel, ph, email, cat, pri, notes };
+
+                if (ex) {
+                    Object.assign(ex, payload);
+                } else {
+                    S.contacts.push({ id: uid(), ...payload });
+                }
+
+                save();
+                OV.pop(); ov(); render();
+            },
+
+            /* Chatbot Actions */
+            chat() { push({ k: 'chat' }); },
+            cq(d) { this.sendMessage(d.q); },
+            csend() {
+                const v = gv('ci').trim();
+                if (v) this.sendMessage(v);
+            },
+
+            sendMessage(text) {
+                S.chatHistory = S.chatHistory || [];
+                S.chatHistory.push({ r: 'me', t: text, time: Date.now() });
+
+                // Generate evidence-grounded response
+                const resp = generateEvidenceResponse(text);
+                S.chatHistory.push({ r: 'bot', t: resp.t, time: Date.now(), evRef: resp.evidenceRef, isCrisis: resp.isCrisis });
+                save();
+
+                ov();
+                const input = $('#ci'); if (input) input.value = '';
+                const msgs = $('#msgs'); if (msgs) msgs.scrollTop = msgs.scrollHeight;
+            },
+
+            new_chat() {
+                if (confirm('Start a fresh conversation?')) {
+                    S.chatHistory = [];
+                    save(); ov();
+                }
+            },
+
+            clear_chat() {
+                if (confirm('Clear all conversation history?')) {
+                    S.chatHistory = [];
+                    save(); render();
+                }
+            },
+
+            view_evidence(d) {
+                push({ k: 'evidence', id: d.id });
+            },
+
+            /* Sensor & Replay Actions */
+            sensor_modal() { push({ k: 'sensor_modal' }); },
+            connect_ble() { P.connectBLE(); },
+            connect_serial() { P.connectSerial(); },
+            connect_sse() { P.connectSSE(); },
+            pick_subj(d) { P.setWESADReplay(d.s, P.wesadScn); ov(); },
+            pick_scn(d) { P.setWESADReplay(P.wesadSubj, d.scn); ov(); },
+
+            /* Support Actions */
+            supp() { SUP.open('choose'); },
+            sb() { SUP.open('breath'); },
+            sg() {
+                this.sendMessage("Help me ground myself with 5-4-3-2-1");
+                OV.length = 0; push({ k: 'chat' });
+            },
+            pause() { SUP.pause(); },
+            sfin() { SUP.finish(); },
+            sclose() { SUP.close(); },
+            rate(d) { SUP.rate(d.f); },
+
+            /* Settings Toggles */
+            tog_set(d, b) {
+                S.set[d.k] = b.checked;
+                save();
+            },
+
+            export_data() {
+                const dump = {
+                    export_date: new Date().toISOString(),
+                    user: AUTH.user || { name: 'Demo User' },
+                    profile: S.profile,
+                    contacts: S.contacts,
+                    journal: S.journal,
+                    events: S.events,
+                    sessions: S.sessions,
+                    baseline: S.base
+                };
+                const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `calmsignal_export_${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            },
+
+            rbase() {
+                if (confirm('Reset your personalized baseline? 7-day learning will restart.')) {
+                    S.base = DEF_STORE().base;
+                    save(); render();
+                }
+            },
+
+            /* Journal Actions */
+            jnew() { push({ k: 'jform' }); },
+            jt(d, b) {
+                document.querySelectorAll('#tr .chip').forEach(c => c.classList.remove('on'));
+                b.classList.add('on');
+            },
+            jsave() {
+                const t = document.querySelector('#tr .chip.on')?.textContent;
+                if (!t) { $('#je').textContent = 'Please choose a trigger.'; return; }
+                const f = { trig: t, text: gv('jx').trim() };
+                S.journal.push({ id: uid(), t: Date.now(), ...f, hr: E.r.hr, sc: Math.round(E.sc) });
+                save(); OV.pop(); ov(); render();
+            },
+            jdel(d) {
+                if (confirm('Delete this journal entry?')) {
+                    S.journal = S.journal.filter(x => x.id !== d.id);
+                    save(); render();
+                }
+            },
+
+            back() {
+                if (SUP.run && OV[OV.length - 1]?.k === 'support') { SUP.close(); return; }
+                OV.pop(); ov(); render();
+            }
+        };
+
+        document.addEventListener('click', e => {
+            const b = e.target.closest('[data-a]');
+            if (b && A[b.dataset.a]) A[b.dataset.a](b.dataset, b);
+        });
+
+        // Initial boot
+        render();
+    </script>
+</body>
+
+</html>
